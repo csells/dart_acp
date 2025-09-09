@@ -23,6 +23,90 @@ dart example/agcli.dart -a my-agent "Say hello"
 ```
 See `specs/dart_acp_technical_design.md` §17 for full CLI usage.
 
+### Prompt Input
+- Positional argument: Provide the prompt at the end of the command.
+  - Example: `dart example/agcli.dart -a gemini "Summarize README.md"`
+- Stdin: Pipe text into the CLI; it reads the entire stream as the prompt when stdin is not a TTY.
+  - Example: `echo "List available commands" | dart example/agcli.dart -o jsonl`
+
+Full usage:
+
+```
+Usage: dart example/agcli.dart [options] [--] [prompt]
+
+Options:
+  -a, --agent <name>     Select agent from settings.json next to this CLI
+  -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)
+      --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)
+      --write            Enable write capability (still confined to CWD)
+      --resume <id>      Resume an existing session (replay), then send the prompt
+      --save-session <p> Save new sessionId to file
+  -h, --help             Show this help and exit
+
+Prompt:
+  Provide as a positional argument, or pipe via stdin.
+  Use @-mentions to add context: @path, @"a file.txt", @https://example.com/file
+
+Examples:
+  dart example/agcli.dart -a my-agent "Summarize README.md"
+  echo "List available commands" | dart example/agcli.dart -o jsonl
+~/Code/dart_acp$ 
+```
+
+### Output Modes
+- text (default): assistant text, plus plan/tool/diff/commands lines.
+  - Example: `dart example/agcli.dart -a gemini "Summarize README.md"`
+- simple: assistant text only (no plan/tool/diff/commands).
+  - Example: `dart example/agcli.dart -a claude-code -o simple "Hello"`
+- jsonl/json: raw JSON‑RPC frames mirrored to stdout.
+  - Example: `dart example/agcli.dart -a gemini -o json "Hello"`
+
+### File Mentions (@‑mentions)
+- Inline file/URL references in prompts:
+  - Local: `@path`, `@"file with spaces.txt"`, absolute or relative; `~` expands.
+  - URLs: `@https://example.com/spec`.
+- The `@...` remains visible in the user text; a `resource_link` block is added per mention.
+- Examples:
+  - `dart example/agcli.dart -a gemini "Review @lib/src/acp_client.dart"`
+  - `dart example/agcli.dart -a claude-code "Analyze @\"specs/dart acp.md\""`
+  - `dart example/agcli.dart -a gemini "Fetch @https://example.com/spec"`
+
+### MCP Servers
+- Configure top‑level `mcp_servers` in `example/settings.json`; they’re forwarded to `session/new` and `session/load`.
+- Example snippet:
+  ```json
+  {
+    "mcp_servers": [
+      {
+        "name": "filesystem",
+        "command": "/abs/path/to/mcp-server",
+        "args": ["--stdio"],
+        "env": {"FOO": "bar"}
+      }
+    ]
+  }
+  ```
+
+### Session Resumption
+- Save session ID: `dart example/agcli.dart -a gemini --save-session /tmp/sid "Hello"`
+- Resume and continue: `dart example/agcli.dart -a gemini --resume "$(cat /tmp/sid)" "Continue"`
+- Resume with stdin: `echo "Continue" | dart example/agcli.dart -a claude-code --resume "$(cat /tmp/sid)"`
+
+### Agent Selection
+- `-a, --agent <name>` selects an entry from `agent_servers` in `example/settings.json`.
+- Default is the first listed agent if `-a` is omitted.
+  - Examples: `-a gemini`, `-a claude-code`.
+
+### Read / Write Permissions
+- `--write` enables write capability (writes remain confined to CWD).
+- `--yolo` enables read‑everywhere and write capability; writes still fail outside CWD.
+  - Examples:
+    - `dart example/agcli.dart -a gemini --write "Create CHANGELOG entry"`
+    - `dart example/agcli.dart -a claude-code --yolo "Search @/etc/hosts"`
+
+### Cancellation
+- Ctrl‑C sends `session/cancel` and exits with code 130. Use when turns run long.
+
 ### Install Agents and ACP Adapters
 
 - Google Gemini CLI (ACP-capable):
