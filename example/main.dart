@@ -33,6 +33,19 @@ Future<void> main(List<String> argv) async {
     return;
   }
 
+  // Emit client-side JSONL metadata about the selected agent (stdout only).
+  if (args.jsonl) {
+    final meta = {
+      'jsonrpc': '2.0',
+      'method': 'client/selected_agent',
+      'params': {
+        'name': agentName,
+        'command': agent.command,
+      }
+    };
+    stdout.writeln(jsonEncode(meta));
+  }
+
   // Build client
   final client = AcpClient(
     config: AcpConfig(
@@ -65,8 +78,8 @@ Future<void> main(List<String> argv) async {
           return PermissionOutcome.deny;
         },
       ),
-      onProtocolOut: args.jsonl ? (line) => stderr.writeln(line) : null,
-      onProtocolIn: args.jsonl ? (line) => stderr.writeln(line) : null,
+      onProtocolOut: args.jsonl ? (line) => stdout.writeln(line) : null,
+      onProtocolIn: args.jsonl ? (line) => stdout.writeln(line) : null,
     ),
   );
 
@@ -98,7 +111,7 @@ Future<void> main(List<String> argv) async {
     content: [AcpClient.text(prompt)],
   );
 
-  // In JSONL mode, do not print plain text; only JSONL is emitted to stderr
+  // In JSONL mode, do not print plain text; only JSONL is emitted to stdout
   // via protocol taps. In plain mode, stream assistant text chunks to stdout.
   // No buffer needed; we either stream plain text (default) or emit JSONL only.
   await for (final u in updates) {
@@ -181,7 +194,7 @@ void _printUsage() {
   stdout.writeln('');
   stdout.writeln('Options:');
   stdout.writeln('  -a, --agent <name>   Select agent from settings.json next to this CLI');
-  stdout.writeln('  -j, --jsonl          Emit protocol JSON-RPC frames to stderr (no plain text)');
+  stdout.writeln('  -j, --jsonl          Emit protocol JSON-RPC frames to stdout (no plain text)');
   stdout.writeln('  -h, --help           Show this help and exit');
   stdout.writeln('');
   stdout.writeln('Prompt:');

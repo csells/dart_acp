@@ -240,7 +240,7 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
 
 - **CLI flags**:  
   - `--agent <name>` (`-a <name>`): selects an agent by key from `agent_servers`.  
-  - `--jsonl` (`-j`): mirrors protocol frames (JSONL) to `stderr` exactly as sent/received; suppresses plain‑text stdout (see Logging).
+  - `--jsonl` (`-j`): mirrors protocol frames (JSONL) to `stdout` exactly as sent/received; suppresses plain‑text output (see Logging).
 
 - **Selection rules**:  
   1) If `--agent` is provided, use that agent key.  
@@ -263,9 +263,10 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
 
 When `--jsonl`/`-j` is set:
 
-- **Protocol echo**: Echo every JSON‑RPC frame the client sends to the agent and every frame received from the agent to `stderr` as raw JSONL (exact bytes per line, no prefixes like `>>`/`<<`).  
-- **Mutual exclusivity**: In JSONL mode, the CLI does not emit the assistant’s plain‑text response to stdout. Without `--jsonl`, the CLI streams only the assistant’s plain‑text response to stdout and does not mirror protocol frames.  
-- **Stdout cleanliness**: Stdout is for plain text response; when `--jsonl` is active, stdout remains silent.
+- **Protocol echo**: Echo every JSON‑RPC frame the client sends to the agent and every frame received from the agent to `stdout` as raw JSONL (exact bytes per line, no prefixes like `>>`/`<<`).  
+- **Mutual exclusivity**: JSONL or plain text, not both. In JSONL mode, the CLI does not emit the assistant’s plain‑text response; without `--jsonl`, the CLI streams only the assistant’s plain‑text response and does not mirror protocol frames.  
+- **Streams**: JSONL goes to `stdout`. Errors and diagnostics (non‑JSON lines) go to `stderr`.
+- **Client metadata line**: Before sending any protocol requests, the CLI emits a single JSON‑RPC notification line to `stdout` with `method="client/selected_agent"` and params `{ name, command }`. This line is for human/tooling context only and is not sent to the ACP agent; it is not part of the transport stream. Arguments and environment variables are deliberately omitted to avoid leaking secrets.
 
 ---
 
@@ -320,7 +321,7 @@ When `--jsonl`/`-j` is set:
 
 - **v0.1.0**: stdio transport; initialize/new/load/prompt/cancel; FS + permission hooks; updates stream; example with a generic ACP agent.  
 - **v0.2.0**: diagnostics improvements, backpressure/timeout knobs.  
-- **v0.3.0** *(this design)*: CLI agent selection via `settings.json` next to the CLI (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and JSONL mirroring to `stderr` (`--jsonl/-j`).  
+- **v0.3.0** *(this design)*: CLI agent selection via `settings.json` next to the CLI (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and JSONL mirroring to `stdout` (`--jsonl/-j`).  
 - **Future**: TCP/WebSocket transport; agent‑side Dart helpers; richer diff/command UX adapters; MCP server discovery passthrough.
 
 ---
@@ -362,7 +363,7 @@ dart run example/main.dart [options] [--] [prompt]
 ### 17.2 Options
 
 - `-a, --agent <name>`: Selects an agent by key from `settings.json` (script directory) → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
-- `-j, --jsonl`: Emits raw JSON‑RPC frames to stderr as JSON Lines (raw, unprefixed) and suppresses plain‑text stdout.
+- `-j, --jsonl`: Emits raw JSON‑RPC frames to stdout as JSON Lines (raw, unprefixed) and suppresses plain‑text stdout.
 - `-h, --help`: Prints usage and exits.
 
 ### 17.3 Configuration (`settings.json` next to CLI)
@@ -400,7 +401,7 @@ Example:
   - Tool call updates (`[tool] ...`).  
   - Available commands (`[commands] ...`).  
   - Turn end (`Turn ended: <StopReason>`).  
-- Stderr: when `-j/--jsonl` is set, raw JSON‑RPC frames (JSONL) for both directions. Errors and diagnostics also go to stderr.
+- Stdout: when `-j/--jsonl` is set, raw JSON‑RPC frames (JSONL) for both directions. Stderr remains reserved for errors/diagnostics.
 
 ### 17.6 Exit Codes
 

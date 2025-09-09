@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","method":"client/selected_agent","params":{"name":"claude-code","command":"npx"}}
+{"jsonrpc":"2.0","method":"initialize","id":0,"params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true}}}}
+{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true}}}}
+{"jsonrpc":"2.0","method":"session/new","id":1,"params":{"cwd":"/Users/csells/Code/dart_acp","mcpServers":[]}}
+{"jsonrpc":"2.0","id":1,"result":{"sessionId":"lgt3wk84v3"}}
+{"jsonrpc":"2.0","method":"session/prompt","id":2,"params":{"sessionId":"lgt3wk84v3","prompt":[{"type":"text","text":"what's 2+2?"}]}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"lgt3wk84v3","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"4"}}}}
+{"jsonrpc":"2.0","id":2,"result":{"stopReason":"end_turn"}}
