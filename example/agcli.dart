@@ -190,7 +190,7 @@ class _Args {
 
 void _printUsage() {
   // Print to stdout for --help
-  stdout.writeln('Usage: dart run example/main.dart [options] [--] [prompt]');
+  stdout.writeln('Usage: dart example/agcli.dart [options] [--] [prompt]');
   stdout.writeln('');
   stdout.writeln('Options:');
   stdout.writeln('  -a, --agent <name>   Select agent from settings.json next to this CLI');
@@ -201,6 +201,6 @@ void _printUsage() {
   stdout.writeln('  Provide as a positional argument, or pipe via stdin.');
   stdout.writeln('');
   stdout.writeln('Examples:');
-  stdout.writeln('  dart run example/main.dart -a my-agent "Summarize README.md"');
-  stdout.writeln('  echo "List available commands" | dart run example/main.dart -j');
+  stdout.writeln('  dart example/agcli.dart -a my-agent "Summarize README.md"');
+  stdout.writeln('  echo "List available commands" | dart example/agcli.dart -j');
 }

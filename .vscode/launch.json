@@ -5,7 +5,7 @@
       "name": "dart_acp",
       "request": "launch",
       "type": "dart",
-      "program": "example/main.dart"
+      "program": "example/agcli.dart"
     }
   ]
 }
