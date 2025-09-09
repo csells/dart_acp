@@ -1,6 +1,6 @@
 # `dart_acp` Technical Design (Client-Side for ACP)
 
-Client library that lets Dart/Flutter apps connect to ACP agents over a bidirectional stream (stdio first). This document covers the design of both the `dart_acp` library and the separate example CLI located under `example/`.
+Client library that lets Dart/Flutter apps connect to ACP agents over a bidirectional stream. This document covers the design of both the `dart_acp` library and the separate example CLI located under `example/`.
 
 ACP Specification: https://agentclientprotocol.com/overview/introduction
 
@@ -13,25 +13,25 @@ ACP Specification: https://agentclientprotocol.com/overview/introduction
 - A high‑level client façade for **initialize → session/new|session/load → session/prompt → session/cancel**.
 - A **stream of updates** (plan changes, assistant message chunks, tool calls, diffs, available commands, etc.).
 - **Agent→Client callbacks** for file system reads/writes and permission prompts.
-- **Transport abstraction** (stdio first; future TCP/WebSocket).
-- **Credentials strategy** that *supports* API keys without *requiring* them (see §6).
+- **Transport abstraction** (transport‑agnostic; supports stdio; TCP/WebSocket also possible).
+\- **CLI settings**: the example CLI resolves agent command/args and environment overlay from a `settings.json` file located next to the CLI (script directory).
 
 This library enables Dart apps—and `dartantic_ai` via a small adapter—to talk to ACP agents configured by the host.
 
 ### 1.1 Library vs CLI
 
-- **Library (`dart_acp`)**: A reusable client providing transports, JSON‑RPC peer, session management, providers (FS, permissions, credentials, terminal), and a typed updates stream. It is UI‑agnostic and agent‑agnostic.
-- **Example CLI (`example/main.dart`)**: A minimal command‑line program demonstrating the library. It resolves the agent via `./settings.json`, starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--verbose/-v`.
+- **Library (`dart_acp`)**: A reusable client providing transports, JSON‑RPC peer, session management, providers (FS, permissions, terminal), and a typed updates stream. It is UI‑agnostic and agent‑agnostic. The library does not read `settings.json`; callers must provide `workspaceRoot`, `agentCommand`, `agentArgs`, and `envOverrides` explicitly.
+- **Example CLI (`example/main.dart`)**: A minimal command‑line program demonstrating the library. The CLI resolves the agent via `settings.json` located next to the CLI (script directory), starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--verbose/-v`.
 
 ---
 
 ## 2. Goals & Non‑Goals
 
 ### Goals
-- Be a **strict ACP client** that is transport‑agnostic and interoperable with ACP agents via stdio.
+- Be a **strict ACP client** that is transport‑agnostic and interoperable with ACP agents over supported transports.
 - Expose a **strongly‑typed events stream** of ACP `session/update` notifications.
 - Provide **pluggable providers** for FS access and permission decisions.
-- **Support, not require, API keys** (inherit pass‑through env; optional overrides; optional JSON‑RPC `authenticate` if agent requests it).
+- No credential flows in the client; environment overlay provided by the host. The example CLI reads `settings.json` next to the CLI to build env/command.
 
 ### Non‑Goals
 - No storage of credentials, no OAuth UI, no secret management vaults.
@@ -49,7 +49,7 @@ flowchart LR
   end
 
   subgraph dart_acp Library
-    T[AcpTransport: stdio first]
+    T[AcpTransport: transport abstraction]
     P[JsonRpc Peer: req/resp + notify]
     S[Acp Session Manager: init, new, load, prompt, cancel]
     H[Client Hooks: FS Provider, Permission Provider]
@@ -57,7 +57,7 @@ flowchart LR
   end
 
   subgraph ACP Agent Process
-    Z[ACP Agent: configured via settings.json]
+    Z[ACP Agent: configured by host]
   end
 
   A -->|Public API| S
@@ -82,7 +82,6 @@ flowchart LR
 ## 4. Protocol Mapping (ACP → Library Responsibilities)
 
 - **initialize**: Negotiate protocol version and capability exchange. Library exposes a simple “client capabilities” struct (e.g., `fs.readTextFile`, `fs.writeTextFile`) and records agent capabilities/methods.  
-- **authenticate** *(optional)*: If the agent advertises auth methods, the library invokes `authenticate` with a method identifier and returns the agent’s result. *This call is optional and only performed when the agent requests it.*  
 - **session/new** & **session/load**: Start a new session (specify working directory / workspace root) or load an existing one if supported by the agent.  
 - **session/prompt**: Send content blocks; stream `session/update` notifications (plan entries, assistant message deltas, tool calls with status, diffs, available command updates, etc.); complete with a **StopReason**.  
 - **session/cancel**: Notify the agent; ensure pending permission prompts are resolved as cancelled; expect a final prompt result with `stopReason=cancelled`.  
@@ -103,11 +102,7 @@ sequenceDiagram
 
   App->>Lib: Create client (caps, transport config)
   Lib->>Agent: initialize(protocolVersion, clientCapabilities)
-  Agent-->>Lib: initialize.result(protocolVersion, agentCapabilities, authMethods?)
-  alt If auth advertised AND configured to use it
-    Lib->>Agent: authenticate(methodId, optional params)
-    Agent-->>Lib: authenticate.result
-  end
+  Agent-->>Lib: initialize.result(protocolVersion, agentCapabilities)
   Lib->>Agent: session/new (cwd, mcpServers?)
   Agent-->>Lib: session/new.result(sessionId)
 ```
@@ -174,23 +169,14 @@ stateDiagram-v2
 
 ---
 
-## 6. Credentials Strategy (API Keys Supported but Not Required)
+## 6. Environment-Only Configuration
 
-**Design Principle:** *The library must function with zero credentials provided.* If the agent can operate using the user’s logged‑in session, the library does **not** block or prompt. However, if the user supplies API keys or the agent requires authentication, the library **supports** it.
+Design principle: the client does not implement any credential flows. Any credentials required by an agent must be provided via the spawned process environment. When using the example CLI, these variables are configured via `settings.json` next to the CLI (see §8.1). The library itself does not read `settings.json` and expects the host to supply env.
 
-### 6.1 Strategy Matrix
-
-| Strategy                                 | Default | How it works                                                                                                                                                 | Where configured                                | Notes                                            |
-| ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------ |
-| **Agent‑managed login**                  | ✅       | Library spawns the agent; agent uses its own logged‑in user session.                                                                                         | Transport/agent process config.                 | No keys passed; zero setup path.                 |
-| **Environment pass‑through**             | ✅       | Library inherits the current process environment when spawning the agent, so keys like `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc. are visible to the agent. | Host process environment.                       | Library never stores keys; just pass‑through.    |
-| **Environment overrides (opt‑in)**       | ✅       | Caller may supply an **optional** map of env vars to *augment* the spawned process environment.                                                              | Library configuration (“additional env”).       | For sandboxing or multi‑key testing.             |
-| **JSON‑RPC authenticate (if requested)** | ✅       | If the agent advertises an auth method at `initialize`, the library can call `authenticate(methodId, params)` via an **optional** credentials provider.      | Library configuration (“credentials provider”). | No UI; provider returns opaque params or tokens. |
-
-**Constraints**  
-- The library never persists secrets and never opens interactive login UIs.  
-- Absence of keys must **not** be treated as an error unless the agent itself refuses to run.  
-- Environment overrides must be additive and must not leak back to the parent process.
+Constraints
+- No secret storage and no interactive login UIs in the client.  
+- Environment overlay is additive and does not leak back to the parent process.  
+- If the agent requires credentials, it must read them from environment variables as documented by that agent.
 
 ---
 
@@ -202,25 +188,24 @@ stateDiagram-v2
   - **FS Provider**: read & write text files (workspace‑jail enforced; path normalization; symlink resolution).  
   - **Permission Provider**: policy or interactive decision for each `session/request_permission` (supports structured rationale and option rendering).  
 - **Transport**: stdio process (spawn agent binary; configurable executable + args + cwd + extra env).  
-- **Credentials**: see §6 (agent login by default; env pass‑through; optional overrides; optional authenticate flow).
+- **Configuration**: see §6 (environment-only configuration; no credential flows in client).
 
 ---
 
-## 8. Configuration
+## 8. Configuration (Library)
 
-- **Agent command**: executable name and args (provided via `./settings.json`).  
+- **Agent command**: executable name and args (provided explicitly by the host).  
 - **Workspace root**: absolute path used for FS jail and as the default `cwd` for new sessions.  
 - **Client capabilities**: booleans for `fs.readTextFile`, `fs.writeTextFile`, etc. (disabled by default for safety; opt‑in to enable).  
 - **Environment behavior**: inherit parent env by default; optional additional env map; no persistence.  
-- **Credentials provider** *(optional)*: only used if the agent asks for `authenticate`. Returns opaque payload to send to the agent.  
 - **Timeouts**: per‑call configurable (initialize, prompt, permission).  
 - **Backpressure**: bounded notification queue size with drop/slow‑reader policy (configured).
 
-### 8.1 Agent Selection via `./settings.json` and CLI
+### 8.1 Example CLI Agent Selection via `settings.json`
 
-To support multiple ACP agents and per‑agent launch options, the library and the example CLI resolve the agent process from a JSON settings file in the app’s current working directory and an optional CLI flag.
+To support multiple ACP agents and per‑agent launch options, the example CLI resolves the agent process from a JSON settings file located next to the CLI (the script directory) and an optional CLI flag. The library does not read this file; it accepts explicit configuration from the caller.
 
-- **Settings file path**: `./settings.json` (relative to the process CWD).  
+- **Settings file path**: `settings.json` (in the CLI script directory).  
 - **Strict JSON**: parsed with `dart:convert` (`jsonDecode`). No comments or trailing commas allowed.  
 - **Schema**:
 
@@ -241,17 +226,13 @@ To support multiple ACP agents and per‑agent launch options, the library and t
   ```json
   {
     "agent_servers": {
-      "claude-code": {
-        "command": "npx",
-        "args": ["acp-claude-code"],
+      "my-agent": {
+        "command": "agent-binary",
+        "args": ["--flag"],
         "env": {
           "ACP_PERMISSION_MODE": "acceptEdits",
-          "ACP_DEBUG": "true",
+          "ACP_DEBUG": "true"
         }
-      },
-      "gemini": {
-        "command": "gemini",
-        "args": ["--experimental-acp"],
       }
     }
   }
@@ -266,7 +247,7 @@ To support multiple ACP agents and per‑agent launch options, the library and t
   2) Otherwise, default to the first listed key under `agent_servers` (based on insertion order preserved by `jsonDecode`’s `LinkedHashMap`).
 
 - **Validation & errors**:  
-  - If `./settings.json` is missing, unreadable, malformed, or lacks `agent_servers`, the client exits with a non‑zero status and a clear error message.  
+  - If `settings.json` is missing, unreadable, malformed, or lacks `agent_servers`, the client exits with a non‑zero status and a clear error message.  
   - If `--agent <name>` is provided but the key is not present, the client exits with a non‑zero status and a clear error.  
   - Each agent entry must provide `command` (string). `args` (array of strings) and `env` (object of string→string) are optional; non‑string values are rejected with an error.  
   - If the resolved command cannot be started by the OS, surface a descriptive error; no implicit fallbacks are applied by the client.
@@ -319,8 +300,8 @@ When `--verbose`/`-v` is set:
 ## 12. Interop & Compatibility
 
 - **ACP versions**: client proposes a preferred protocol version; accepts the agent’s negotiated version and only uses advertised capabilities.  
-- **Multi‑agent support**: works with any ACP‑compatible agent configured via `./settings.json`.  
-- **Authentication**: the optional `authenticate` path enables compatibility with agents that request it without imposing key requirements on the client.
+- **Multi‑agent support**: works with any ACP‑compatible agent configured via `settings.json` (for the example CLI).  
+- **Credentials**: agents that require credentials must obtain them from environment variables; the client does not implement authentication flows.
 
 ---
 
@@ -330,15 +311,15 @@ When `--verbose`/`-v` is set:
 - **Hook fakes**: simulated FS and permissions for deterministic tests.  
 - **Cancellation tests**: verify `stopReason=cancelled` and permission prompts resolved as cancelled.  
 - **Agent exec discovery**: skip integration tests if the agent binary is unavailable.  
-- **Credential tests**: matrix covering (a) no keys, (b) env pass‑through set, (c) env overrides, (d) agent‑requested authenticate with credentials provider.
+- **Settings.json tests**: parsing, validation errors, agent selection, and environment overlay semantics.
 
 ---
 
 ## 14. Release Plan
 
-- **v0.1.0**: stdio transport; initialize/new/load/prompt/cancel; FS + permission hooks; updates stream; no auth UI; env pass‑through; example with a generic ACP agent.  
-- **v0.2.0**: adds optional API‑key **support** (env overrides + credentials provider + authenticate); formalizes backpressure/timeout knobs; improved diagnostics.  
-- **v0.3.0** *(this design)*: CLI agent selection via `./settings.json` (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and verbose raw JSONL mirroring to `stderr` (`--verbose/-v`).  
+- **v0.1.0**: stdio transport; initialize/new/load/prompt/cancel; FS + permission hooks; updates stream; example with a generic ACP agent.  
+- **v0.2.0**: diagnostics improvements, backpressure/timeout knobs.  
+- **v0.3.0** *(this design)*: CLI agent selection via `settings.json` next to the CLI (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and verbose raw JSONL mirroring to `stderr` (`--verbose/-v`).  
 - **Future**: TCP/WebSocket transport; agent‑side Dart helpers; richer diff/command UX adapters; MCP server discovery passthrough.
 
 ---
@@ -347,7 +328,7 @@ When `--verbose`/`-v` is set:
 
 1. **FS capabilities default**: keep disabled by default (safer) or enable read by default and gate write?  
 2. **Permission UX policy**: should the default be *prompt* (interactive) or *deny* unless explicitly allowed?  
-3. **Env override naming**: any standard keys beyond `ANTHROPIC_API_KEY` you’d like first‑class docs for (e.g., `OPENAI_API_KEY`, `GOOGLE_API_KEY`)?  
+3. **Env variable guidance**: any conventions you want documented for common variables (naming, casing) without listing provider-specific keys?  
 4. **Backpressure policy**: on slow consumer, prefer blocking the transport read or dropping oldest updates (with a warning)?  
 5. **StopReason surfacing**: anything special your `dartantic_ai` adapter should map (e.g., `refusal` → a specific UI state)?
 
@@ -379,12 +360,13 @@ dart run example/main.dart [options] [--] [prompt]
 
 ### 17.2 Options
 
-- `-a, --agent <name>`: Selects an agent by key from `./settings.json` → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
+- `-a, --agent <name>`: Selects an agent by key from `settings.json` (script directory) → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
 - `-v, --verbose`: Mirrors raw JSON‑RPC frames to stderr as JSON Lines (raw, unprefixed). CLI informational messages and errors also go to stderr. Stdout is reserved for the CLI’s user‑facing stream described below.
+- `-h, --help`: Prints usage and exits.
 
-### 17.3 Configuration (`./settings.json`)
+### 17.3 Configuration (`settings.json` next to CLI)
 
-The CLI uses the same settings schema as the library (see §8.1). The file must exist in the current working directory.
+The CLI uses the schema in §8.1. The file must exist next to the CLI (the `example/` directory when running `dart run example/main.dart`).
 
 Example:
 

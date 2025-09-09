@@ -7,8 +7,7 @@ workspace jail, permissions, and optional terminal provider.
 See `specs/` for details.
 
 ### Features
-- Stdio transport + NPX fallback (`claude-code-acp` → `npx -y
-  @zed-industries/claude-code-acp`).
+- Stdio transport (JSON‑RPC over stdin/stdout between client and agent).
 - JSON‑RPC peer with client callbacks (fs.read/write, permission prompts,
   terminal lifecycle).
 - Session manager: `initialize`, `newSession`, `prompt` streaming (`AcpUpdate`
@@ -19,6 +18,23 @@ See `specs/` for details.
 
 ### Quick Start
 ```bash
-dart run example/main.dart
+# Ensure example/settings.json exists next to the CLI (see specs)
+dart run example/main.dart -a my-agent "Say hello"
 ```
-See `example/main.dart` for a minimal streaming prompt example.
+See `specs/dart_acp_technical_design.md` §17 for full CLI usage.
+
+Using the library directly:
+
+```dart
+import 'package:dart_acp/dart_acp.dart';
+
+final client = AcpClient(
+  config: AcpConfig(
+    workspaceRoot: '/path/to/workspace',
+    agentCommand: 'your-agent-binary',
+    agentArgs: ['--flag'],
+    envOverrides: {'FOO': 'bar'},
+  ),
+);
+```
+```

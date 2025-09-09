@@ -22,6 +22,8 @@ class AcpClient {
       args: config.agentArgs,
       envOverrides: config.envOverrides,
       logger: config.logger,
+      onProtocolOut: config.onProtocolOut,
+      onProtocolIn: config.onProtocolIn,
     );
   }
 

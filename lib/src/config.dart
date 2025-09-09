@@ -2,7 +2,6 @@ import 'package:logging/logging.dart';
 import 'capabilities.dart';
 import 'providers/fs_provider.dart';
 import 'providers/permission_provider.dart';
-import 'providers/credentials_provider.dart';
 import 'providers/terminal_provider.dart';
 
 class AcpTimeouts {
@@ -19,17 +18,20 @@ class AcpTimeouts {
 
 class AcpConfig {
   final String workspaceRoot; // absolute path required
-  final String? agentCommand; // default: claude-code-acp (with npx fallback)
+  final String? agentCommand; // required for stdio transport; provided by host
   final List<String> agentArgs;
   final Map<String, String> envOverrides; // additive only
   final AcpCapabilities capabilities;
   final AcpTimeouts timeouts;
   final Logger logger;
+  // Optional taps for raw JSON-RPC frames (unprefixed JSONL). If provided,
+  // they are invoked for each frame sent/received by the transport.
+  final void Function(String line)? onProtocolOut;
+  final void Function(String line)? onProtocolIn;
 
   // Providers
   final FsProvider fsProvider;
   final PermissionProvider permissionProvider;
-  final CredentialsProvider? credentialsProvider;
   final TerminalProvider? terminalProvider;
 
   AcpConfig({
@@ -42,8 +44,9 @@ class AcpConfig {
     Logger? logger,
     FsProvider? fsProvider,
     PermissionProvider? permissionProvider,
-    this.credentialsProvider,
     this.terminalProvider,
+    this.onProtocolOut,
+    this.onProtocolIn,
   }) : logger = logger ?? Logger('dart_acp'),
        fsProvider =
            fsProvider ?? DefaultFsProvider(workspaceRoot: workspaceRoot),

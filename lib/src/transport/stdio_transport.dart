@@ -10,6 +10,8 @@ class StdioTransport implements AcpTransport {
   final String cwd;
   final Map<String, String> envOverrides;
   final Logger logger;
+  final void Function(String line)? onProtocolOut;
+  final void Function(String line)? onProtocolIn;
 
   Process? _process;
   LineJsonChannel? _channel;
@@ -20,6 +22,8 @@ class StdioTransport implements AcpTransport {
     this.args = const [],
     this.envOverrides = const {},
     required this.logger,
+    this.onProtocolOut,
+    this.onProtocolIn,
   });
 
   @override
@@ -44,32 +48,21 @@ class StdioTransport implements AcpTransport {
       );
     }
 
-    Process? proc;
-    const defaultCmd = 'claude-code-acp';
-    final cmd = command ?? defaultCmd;
-    try {
-      proc = await spawn(cmd, args);
-      logger.fine('Spawned agent: $cmd ${args.join(' ')}');
-    } on ProcessException catch (e) {
-      // If the caller explicitly provided a command path/name, do not try to
-      // fall back to npx; surface the error so the UI can give actionable help.
-      if (command != null) {
-        logger.warning('Agent "$cmd" failed to start: ${e.message}');
-        rethrow;
-      }
-      logger.info(
-        'Agent "$cmd" not found or failed to start: ${e.message}. Falling back to npx.',
+    if (command == null || command!.trim().isEmpty) {
+      throw StateError(
+        'AcpTransport requires an explicit agent command provided by the host.',
       );
-      // Fallback to npx -y @zed-industries/claude-code-acp
-      final npxArgs = ['-y', '@zed-industries/claude-code-acp', ...args];
-      proc = await spawn('npx', npxArgs);
-      logger.fine('Spawned agent via npx: npx ${npxArgs.join(' ')}');
     }
+    final cmd = command!;
+    final proc = await spawn(cmd, args);
+    logger.fine('Spawned agent: $cmd ${args.join(' ')}');
 
     _process = proc;
     _channel = LineJsonChannel(
       proc,
       onStderr: (s) => logger.finer('[agent stderr] $s'),
+      onInboundLine: onProtocolIn,
+      onOutboundLine: onProtocolOut,
     );
   }
 

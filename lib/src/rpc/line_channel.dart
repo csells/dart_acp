@@ -9,13 +9,21 @@ class LineJsonChannel {
   final StreamChannelController<String> _controller = StreamChannelController();
   late final StreamSubscription _stdoutSub;
   late final StreamSubscription _stderrSub;
+  final void Function(String line)? onInboundLine;
+  final void Function(String line)? onOutboundLine;
 
-  LineJsonChannel(this.process, {void Function(String)? onStderr}) {
+  LineJsonChannel(
+    this.process, {
+    void Function(String)? onStderr,
+    this.onInboundLine,
+    this.onOutboundLine,
+  }) {
     _stdoutSub = process.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) {
           if (line.trim().isEmpty) return;
+          if (onInboundLine != null) onInboundLine!(line);
           _controller.local.sink.add(line);
         });
     _stderrSub = process.stderr.transform(utf8.decoder).listen((line) {
@@ -24,6 +32,7 @@ class LineJsonChannel {
 
     _controller.local.stream.listen((out) {
       // Each outgoing payload is one JSON-RPC message; append newline
+      if (onOutboundLine != null) onOutboundLine!(out);
       process.stdin.add(utf8.encode(out));
       process.stdin.add([0x0A]);
     });

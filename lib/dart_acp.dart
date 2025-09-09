@@ -7,6 +7,5 @@ export 'src/models/types.dart';
 export 'src/models/updates.dart';
 export 'src/providers/fs_provider.dart';
 export 'src/providers/permission_provider.dart';
-export 'src/providers/credentials_provider.dart';
 export 'src/providers/terminal_provider.dart';
 export 'src/models/terminal_events.dart';

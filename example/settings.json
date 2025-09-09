@@ -1,0 +1,20 @@
+{
+  "agent_servers": {
+    "claude-code": {
+      "command": "npx",
+      "args": [
+        "acp-claude-code"
+      ],
+      "env": {
+        "ACP_PERMISSION_MODE": "acceptEdits",
+        "ACP_DEBUG": "true"
+      }
+    },
+    "gemini": {
+      "command": "gemini",
+      "args": [
+        "--experimental-acp"
+      ]
+    }
+  }
+}
