@@ -65,8 +65,8 @@ Future<void> main(List<String> argv) async {
           return PermissionOutcome.deny;
         },
       ),
-      onProtocolOut: args.verbose ? (line) => stderr.writeln(line) : null,
-      onProtocolIn: args.verbose ? (line) => stderr.writeln(line) : null,
+      onProtocolOut: args.jsonl ? (line) => stderr.writeln(line) : null,
+      onProtocolIn: args.jsonl ? (line) => stderr.writeln(line) : null,
     ),
   );
 
@@ -98,7 +98,9 @@ Future<void> main(List<String> argv) async {
     content: [AcpClient.text(prompt)],
   );
 
-  final buffer = args.verbose ? StringBuffer() : null;
+  // In JSONL mode, do not print plain text; only JSONL is emitted to stderr
+  // via protocol taps. In plain mode, stream assistant text chunks to stdout.
+  // No buffer needed; we either stream plain text (default) or emit JSONL only.
   await for (final u in updates) {
     if (u is MessageDelta) {
       final texts = u.content
@@ -106,16 +108,8 @@ Future<void> main(List<String> argv) async {
           .map((b) => b['text'] as String)
           .join();
       if (texts.isEmpty) continue;
-      if (buffer != null) {
-        buffer.write(texts);
-      } else {
-        stdout.writeln(texts);
-      }
+      if (!args.jsonl) stdout.writeln(texts);
     } else if (u is TurnEnded) {
-      // In verbose mode, emit the buffered response only after all protocol logs.
-      if (buffer != null && buffer.isNotEmpty) {
-        stdout.writeln(buffer.toString());
-      }
       break; // End the app after the turn ends
     }
   }
@@ -138,21 +132,21 @@ String? _sessionId;
 
 class _Args {
   final String? agentName;
-  final bool verbose;
+  final bool jsonl;
   final bool help;
   final String? prompt;
 
-  _Args({this.agentName, required this.verbose, required this.help, this.prompt});
+  _Args({this.agentName, required this.jsonl, required this.help, this.prompt});
 
   static _Args parse(List<String> argv) {
     String? agent;
-    bool verbose = false;
+    bool jsonl = false;
     bool help = false;
     final rest = <String>[];
     for (var i = 0; i < argv.length; i++) {
       final a = argv[i];
-      if (a == '-v' || a == '--verbose') {
-        verbose = true;
+      if (a == '-j' || a == '--jsonl') {
+        jsonl = true;
       } else if (a == '-h' || a == '--help') {
         help = true;
       } else if (a == '-a' || a == '--agent') {
@@ -177,7 +171,7 @@ class _Args {
       }
     }
     final prompt = rest.isNotEmpty ? rest.join(' ') : null;
-    return _Args(agentName: agent, verbose: verbose, help: help, prompt: prompt);
+    return _Args(agentName: agent, jsonl: jsonl, help: help, prompt: prompt);
   }
 }
 
@@ -187,7 +181,7 @@ void _printUsage() {
   stdout.writeln('');
   stdout.writeln('Options:');
   stdout.writeln('  -a, --agent <name>   Select agent from settings.json next to this CLI');
-  stdout.writeln('  -v, --verbose        Mirror raw JSON-RPC frames to stderr');
+  stdout.writeln('  -j, --jsonl          Emit protocol JSON-RPC frames to stderr (no plain text)');
   stdout.writeln('  -h, --help           Show this help and exit');
   stdout.writeln('');
   stdout.writeln('Prompt:');
@@ -195,5 +189,5 @@ void _printUsage() {
   stdout.writeln('');
   stdout.writeln('Examples:');
   stdout.writeln('  dart run example/main.dart -a my-agent "Summarize README.md"');
-  stdout.writeln('  echo "List available commands" | dart run example/main.dart -v');
+  stdout.writeln('  echo "List available commands" | dart run example/main.dart -j');
 }

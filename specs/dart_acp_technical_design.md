@@ -21,7 +21,7 @@ This library enables Dart apps—and `dartantic_ai` via a small adapter—to tal
 ### 1.1 Library vs CLI
 
 - **Library (`dart_acp`)**: A reusable client providing transports, JSON‑RPC peer, session management, providers (FS, permissions, terminal), and a typed updates stream. It is UI‑agnostic and agent‑agnostic. The library does not read `settings.json`; callers must provide `workspaceRoot`, `agentCommand`, `agentArgs`, and `envOverrides` explicitly.
-- **Example CLI (`example/main.dart`)**: A minimal command‑line program demonstrating the library. The CLI resolves the agent via `settings.json` located next to the CLI (script directory), starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--verbose/-v`.
+- **Example CLI (`example/main.dart`)**: A minimal command‑line program demonstrating the library. The CLI resolves the agent via `settings.json` located next to the CLI (script directory), starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--jsonl/-j`.
 
 ---
 
@@ -240,7 +240,7 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
 
 - **CLI flags**:  
   - `--agent <name>` (`-a <name>`): selects an agent by key from `agent_servers`.  
-  - `--verbose` (`-v`): mirrors protocol frames (JSONL) to `stderr` exactly as sent/received (see Logging).
+  - `--jsonl` (`-j`): mirrors protocol frames (JSONL) to `stderr` exactly as sent/received; suppresses plain‑text stdout (see Logging).
 
 - **Selection rules**:  
   1) If `--agent` is provided, use that agent key.  
@@ -259,12 +259,13 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
   - Launch the selected agent using its `command` and `args` from `settings.json`.  
   - The working directory for the agent remains the configured workspace root unless the host overrides when creating a session.
 
-### 8.2 Logging and Verbose Mode
+### 8.2 Logging and JSONL Mode
 
-When `--verbose`/`-v` is set:
+When `--jsonl`/`-j` is set:
 
-- **Protocol echo**: Echo every JSON‑RPC frame the client sends to the agent and every frame received from the agent to `stderr` as raw JSONL (exact bytes per line, no prefixes like `>>`/`<<`, no additional formatting).  
-- **Stdout cleanliness**: Stdout remains reserved for the host app’s own output; verbose diagnostics and protocol mirroring go only to `stderr`.
+- **Protocol echo**: Echo every JSON‑RPC frame the client sends to the agent and every frame received from the agent to `stderr` as raw JSONL (exact bytes per line, no prefixes like `>>`/`<<`).  
+- **Mutual exclusivity**: In JSONL mode, the CLI does not emit the assistant’s plain‑text response to stdout. Without `--jsonl`, the CLI streams only the assistant’s plain‑text response to stdout and does not mirror protocol frames.  
+- **Stdout cleanliness**: Stdout is for plain text response; when `--jsonl` is active, stdout remains silent.
 
 ---
 
@@ -319,7 +320,7 @@ When `--verbose`/`-v` is set:
 
 - **v0.1.0**: stdio transport; initialize/new/load/prompt/cancel; FS + permission hooks; updates stream; example with a generic ACP agent.  
 - **v0.2.0**: diagnostics improvements, backpressure/timeout knobs.  
-- **v0.3.0** *(this design)*: CLI agent selection via `settings.json` next to the CLI (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and verbose raw JSONL mirroring to `stderr` (`--verbose/-v`).  
+- **v0.3.0** *(this design)*: CLI agent selection via `settings.json` next to the CLI (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and JSONL mirroring to `stderr` (`--jsonl/-j`).  
 - **Future**: TCP/WebSocket transport; agent‑side Dart helpers; richer diff/command UX adapters; MCP server discovery passthrough.
 
 ---
@@ -361,7 +362,7 @@ dart run example/main.dart [options] [--] [prompt]
 ### 17.2 Options
 
 - `-a, --agent <name>`: Selects an agent by key from `settings.json` (script directory) → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
-- `-v, --verbose`: Mirrors raw JSON‑RPC frames to stderr as JSON Lines (raw, unprefixed). CLI informational messages and errors also go to stderr. Stdout is reserved for the CLI’s user‑facing stream described below.
+- `-j, --jsonl`: Emits raw JSON‑RPC frames to stderr as JSON Lines (raw, unprefixed) and suppresses plain‑text stdout.
 - `-h, --help`: Prints usage and exits.
 
 ### 17.3 Configuration (`settings.json` next to CLI)
@@ -399,7 +400,7 @@ Example:
   - Tool call updates (`[tool] ...`).  
   - Available commands (`[commands] ...`).  
   - Turn end (`Turn ended: <StopReason>`).  
-- Stderr: when `-v/--verbose` is set, raw JSON‑RPC frames (JSONL) for both directions. Errors and diagnostics also go to stderr.
+- Stderr: when `-j/--jsonl` is set, raw JSON‑RPC frames (JSONL) for both directions. Errors and diagnostics also go to stderr.
 
 ### 17.6 Exit Codes
 
@@ -412,9 +413,9 @@ Example:
 # With inline prompt and default (first) agent
 dart run example/main.dart "Summarize README.md"
 
-# Select agent explicitly and enable verbose protocol mirroring
-dart run example/main.dart -a my-agent -v "List available commands"
+# Select agent explicitly and enable JSONL protocol mirroring
+dart run example/main.dart -a my-agent -j "List available commands"
 
 # Read prompt from stdin
-echo "Refactor the following code…" | dart run example/main.dart -v
+echo "Refactor the following code…" | dart run example/main.dart -j
 ```
