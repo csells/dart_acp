@@ -1,9 +1,6 @@
 # `dart_acp` Technical Design (Client-Side for ACP)
 
-**Version:** 0.2 (adds optional API key *support* without making it *required*)  
-**Date:** 2025‑09‑04  
-**Owner:** Chris & Chappy (implementation in Dart)  
-**Scope:** Client library that lets Dart/Flutter apps connect to ACP agents (e.g., Claude Code ACP) over a bidirectional stream (stdio first). *No implementation code included in this document.*
+Client library that lets Dart/Flutter apps connect to ACP agents over a bidirectional stream (stdio first). This document covers the design of both the `dart_acp` library and the separate example CLI located under `example/`.
 
 ACP Specification: https://agentclientprotocol.com/overview/introduction
 
@@ -19,14 +16,19 @@ ACP Specification: https://agentclientprotocol.com/overview/introduction
 - **Transport abstraction** (stdio first; future TCP/WebSocket).
 - **Credentials strategy** that *supports* API keys without *requiring* them (see §6).
 
-This library enables Dart apps—and `dartantic_ai` via a small adapter—to talk to ACP agents such as the **Claude Code ACP adapter**.
+This library enables Dart apps—and `dartantic_ai` via a small adapter—to talk to ACP agents configured by the host.
+
+### 1.1 Library vs CLI
+
+- **Library (`dart_acp`)**: A reusable client providing transports, JSON‑RPC peer, session management, providers (FS, permissions, credentials, terminal), and a typed updates stream. It is UI‑agnostic and agent‑agnostic.
+- **Example CLI (`example/main.dart`)**: A minimal command‑line program demonstrating the library. It resolves the agent via `./settings.json`, starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--verbose/-v`.
 
 ---
 
 ## 2. Goals & Non‑Goals
 
 ### Goals
-- Be a **strict ACP client** that is transport‑agnostic and works with Claude Code ACP via stdio.
+- Be a **strict ACP client** that is transport‑agnostic and interoperable with ACP agents via stdio.
 - Expose a **strongly‑typed events stream** of ACP `session/update` notifications.
 - Provide **pluggable providers** for FS access and permission decisions.
 - **Support, not require, API keys** (inherit pass‑through env; optional overrides; optional JSON‑RPC `authenticate` if agent requests it).
@@ -47,15 +49,15 @@ flowchart LR
   end
 
   subgraph dart_acp Library
-    T[AcpTransport\n(stdio first)]
-    P[JsonRpc Peer\n(req/resp + notify)]
-    S[Acp Session Manager\n(init,new,load,prompt,cancel)]
-    H[Client Hooks\nFS Provider, Permission Provider]
-    U[Acp Update Stream\nplan, chunks, tool calls, diffs, stop]
+    T[AcpTransport: stdio first]
+    P[JsonRpc Peer: req/resp + notify]
+    S[Acp Session Manager: init, new, load, prompt, cancel]
+    H[Client Hooks: FS Provider, Permission Provider]
+    U[Acp Update Stream: plan, chunks, tool calls, diffs, stop]
   end
 
   subgraph ACP Agent Process
-    Z[ACP Agent\n(e.g., claude-code-acp)]
+    Z[ACP Agent: configured via settings.json]
   end
 
   A -->|Public API| S
@@ -97,7 +99,7 @@ sequenceDiagram
   autonumber
   participant App as Your App
   participant Lib as dart_acp
-  participant Agent as ACP Agent (Claude Code)
+  participant Agent as ACP Agent
 
   App->>Lib: Create client (caps, transport config)
   Lib->>Agent: initialize(protocolVersion, clientCapabilities)
@@ -174,7 +176,7 @@ stateDiagram-v2
 
 ## 6. Credentials Strategy (API Keys Supported but Not Required)
 
-**Design Principle:** *The library must function with zero credentials provided.* If the agent (e.g., Claude Code ACP) can operate using the user’s logged‑in session, the library does **not** block or prompt. However, if the user supplies API keys or the agent requires authentication, the library **supports** it.
+**Design Principle:** *The library must function with zero credentials provided.* If the agent can operate using the user’s logged‑in session, the library does **not** block or prompt. However, if the user supplies API keys or the agent requires authentication, the library **supports** it.
 
 ### 6.1 Strategy Matrix
 
@@ -206,13 +208,82 @@ stateDiagram-v2
 
 ## 8. Configuration
 
-- **Agent command**: executable name and args (default: `claude-code-acp`).  
+- **Agent command**: executable name and args (provided via `./settings.json`).  
 - **Workspace root**: absolute path used for FS jail and as the default `cwd` for new sessions.  
 - **Client capabilities**: booleans for `fs.readTextFile`, `fs.writeTextFile`, etc. (disabled by default for safety; opt‑in to enable).  
 - **Environment behavior**: inherit parent env by default; optional additional env map; no persistence.  
 - **Credentials provider** *(optional)*: only used if the agent asks for `authenticate`. Returns opaque payload to send to the agent.  
 - **Timeouts**: per‑call configurable (initialize, prompt, permission).  
 - **Backpressure**: bounded notification queue size with drop/slow‑reader policy (configured).
+
+### 8.1 Agent Selection via `./settings.json` and CLI
+
+To support multiple ACP agents and per‑agent launch options, the library and the example CLI resolve the agent process from a JSON settings file in the app’s current working directory and an optional CLI flag.
+
+- **Settings file path**: `./settings.json` (relative to the process CWD).  
+- **Strict JSON**: parsed with `dart:convert` (`jsonDecode`). No comments or trailing commas allowed.  
+- **Schema**:
+
+  ```json
+  {
+    "agent_servers": {
+      "your_agent": {
+        "command": "path_to_executable",
+        "args": [],
+        "env": {}
+      }
+    }
+  }
+  ```
+
+  Example:
+
+  ```json
+  {
+    "agent_servers": {
+      "claude-code": {
+        "command": "npx",
+        "args": ["acp-claude-code"],
+        "env": {
+          "ACP_PERMISSION_MODE": "acceptEdits",
+          "ACP_DEBUG": "true",
+        }
+      },
+      "gemini": {
+        "command": "gemini",
+        "args": ["--experimental-acp"],
+      }
+    }
+  }
+  ```
+
+- **CLI flags**:  
+  - `--agent <name>` (`-a <name>`): selects an agent by key from `agent_servers`.  
+  - `--verbose` (`-v`): mirrors protocol frames (JSONL) to `stderr` exactly as sent/received (see Logging).
+
+- **Selection rules**:  
+  1) If `--agent` is provided, use that agent key.  
+  2) Otherwise, default to the first listed key under `agent_servers` (based on insertion order preserved by `jsonDecode`’s `LinkedHashMap`).
+
+- **Validation & errors**:  
+  - If `./settings.json` is missing, unreadable, malformed, or lacks `agent_servers`, the client exits with a non‑zero status and a clear error message.  
+  - If `--agent <name>` is provided but the key is not present, the client exits with a non‑zero status and a clear error.  
+  - Each agent entry must provide `command` (string). `args` (array of strings) and `env` (object of string→string) are optional; non‑string values are rejected with an error.  
+  - If the resolved command cannot be started by the OS, surface a descriptive error; no implicit fallbacks are applied by the client.
+
+- **Environment merge**:  
+  - The spawned process environment is the parent environment overlaid with the selected agent’s `env` map. Keys in `env` override duplicates; unspecified keys are inherited as‑is. No mutation leaks back to the parent process.
+
+- **Execution**:  
+  - Launch the selected agent using its `command` and `args` from `settings.json`.  
+  - The working directory for the agent remains the configured workspace root unless the host overrides when creating a session.
+
+### 8.2 Logging and Verbose Mode
+
+When `--verbose`/`-v` is set:
+
+- **Protocol echo**: Echo every JSON‑RPC frame the client sends to the agent and every frame received from the agent to `stderr` as raw JSONL (exact bytes per line, no prefixes like `>>`/`<<`, no additional formatting).  
+- **Stdout cleanliness**: Stdout remains reserved for the host app’s own output; verbose diagnostics and protocol mirroring go only to `stderr`.
 
 ---
 
@@ -248,8 +319,8 @@ stateDiagram-v2
 ## 12. Interop & Compatibility
 
 - **ACP versions**: client proposes a preferred protocol version; accepts the agent’s negotiated version and only uses advertised capabilities.  
-- **Claude Code ACP**: primary target; should run with agent‑managed login (no keys) or with keys present in env.  
-- **Other agents**: the optional `authenticate` path allows broader compatibility without adding key requirements to the library.
+- **Multi‑agent support**: works with any ACP‑compatible agent configured via `./settings.json`.  
+- **Authentication**: the optional `authenticate` path enables compatibility with agents that request it without imposing key requirements on the client.
 
 ---
 
@@ -265,8 +336,9 @@ stateDiagram-v2
 
 ## 14. Release Plan
 
-- **v0.1.0**: stdio transport; initialize/new/load/prompt/cancel; FS + permission hooks; updates stream; no auth UI; env pass‑through; Claude Code example.  
-- **v0.2.0** *(this design)*: adds optional API‑key **support** (env overrides + credentials provider + authenticate); formalizes backpressure/timeout knobs; improved diagnostics.  
+- **v0.1.0**: stdio transport; initialize/new/load/prompt/cancel; FS + permission hooks; updates stream; no auth UI; env pass‑through; example with a generic ACP agent.  
+- **v0.2.0**: adds optional API‑key **support** (env overrides + credentials provider + authenticate); formalizes backpressure/timeout knobs; improved diagnostics.  
+- **v0.3.0** *(this design)*: CLI agent selection via `./settings.json` (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and verbose raw JSONL mirroring to `stderr` (`--verbose/-v`).  
 - **Future**: TCP/WebSocket transport; agent‑side Dart helpers; richer diff/command UX adapters; MCP server discovery passthrough.
 
 ---
@@ -284,8 +356,83 @@ stateDiagram-v2
 ## 16. Appendices
 
 ### 16.1 Terminology
-- **Agent**: the ACP‑speaking process (e.g., Claude Code ACP).  
+- **Agent**: the ACP‑speaking process configured by the host.  
 - **Client**: this library running inside your app.  
 - **Update**: any `session/update` notification (plan, message chunk, tool call, diff, etc.).  
 - **StopReason**: terminal reason after a `session/prompt` turn ends (e.g., `end_turn`, `max_tokens`, `cancelled`).
 
+---
+
+## 17. Example CLI (Design & Usage)
+
+The example CLI in `example/main.dart` demonstrates how to use the `dart_acp` library from a terminal. It is intentionally minimal and intended as reference code, not a polished tool.
+
+### 17.1 Synopsis
+
+```bash
+dart run example/main.dart [options] [--] [prompt]
+```
+
+- If `prompt` is provided, it is sent as a single turn to the agent.  
+- If `prompt` is omitted, the CLI reads the prompt from stdin until EOF.  
+- The working directory (`cwd`) is used as the workspace root and FS jail.
+
+### 17.2 Options
+
+- `-a, --agent <name>`: Selects an agent by key from `./settings.json` → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
+- `-v, --verbose`: Mirrors raw JSON‑RPC frames to stderr as JSON Lines (raw, unprefixed). CLI informational messages and errors also go to stderr. Stdout is reserved for the CLI’s user‑facing stream described below.
+
+### 17.3 Configuration (`./settings.json`)
+
+The CLI uses the same settings schema as the library (see §8.1). The file must exist in the current working directory.
+
+Example:
+
+```json
+{
+  "agent_servers": {
+    "my-agent": {
+      "command": "agent-binary",
+      "args": ["--flag"],
+      "env": {
+        "ACP_PERMISSION_MODE": "acceptEdits",
+        "ACP_DEBUG": "true"
+      }
+    }
+  }
+}
+```
+
+### 17.4 Behavior
+
+- Resolves the agent using §8.1 rules, merges `env` over the current process environment, and spawns the agent process with `cwd` as the workspace root.  
+- Issues `initialize`, creates a new session, sends the prompt, and streams updates until a terminal `StopReason`.  
+- On `SIGINT` (Ctrl‑C), requests cancellation (`session/cancel`) and exits non‑zero.
+
+### 17.5 Output
+
+- Stdout: human‑friendly streaming information:
+  - Assistant message text chunks as they arrive (role‑prefixed lines).  
+  - Plan updates (`[plan] ...`).  
+  - Tool call updates (`[tool] ...`).  
+  - Available commands (`[commands] ...`).  
+  - Turn end (`Turn ended: <StopReason>`).  
+- Stderr: when `-v/--verbose` is set, raw JSON‑RPC frames (JSONL) for both directions. Errors and diagnostics also go to stderr.
+
+### 17.6 Exit Codes
+
+- `0`: Prompt completed successfully (any non‑error `StopReason`).  
+- `>0`: Configuration, transport, or protocol error (including missing/invalid `settings.json` or unknown agent).
+
+### 17.7 Examples
+
+```bash
+# With inline prompt and default (first) agent
+dart run example/main.dart "Summarize README.md"
+
+# Select agent explicitly and enable verbose protocol mirroring
+dart run example/main.dart -a my-agent -v "List available commands"
+
+# Read prompt from stdin
+echo "Refactor the following code…" | dart run example/main.dart -v
+```
