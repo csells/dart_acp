@@ -8,6 +8,7 @@ import '../models/updates.dart';
 import '../providers/permission_provider.dart';
 import '../providers/terminal_provider.dart';
 import '../rpc/peer.dart';
+import '../models/terminal_events.dart';
 
 typedef Json = Map<String, dynamic>;
 
@@ -28,6 +29,8 @@ class SessionManager {
   final Logger _log;
 
   final Map<String, StreamController<AcpUpdate>> _sessionStreams = {};
+  final StreamController<TerminalEvent> _terminalEvents =
+      StreamController<TerminalEvent>.broadcast();
 
   SessionManager({required this.config, required this.peer})
     : _log = config.logger {
@@ -89,8 +92,10 @@ class SessionManager {
           (resp['stopReason'] as String?) ?? 'other',
         );
         controller.add(TurnEnded(stop));
-      } catch (e) {
+      } catch (e, st) {
         _log.warning('prompt error: $e');
+        // Surface error to listeners so UIs can react
+        controller.addError(e, st);
       } finally {
         await controller.close();
         _sessionStreams.remove(sessionId);
@@ -103,6 +108,8 @@ class SessionManager {
   Future<void> cancel({required String sessionId}) async {
     await peer.cancel({'sessionId': sessionId});
   }
+
+  Stream<TerminalEvent> get terminalEvents => _terminalEvents.stream;
 
   void _routeSessionUpdate(Json json) {
     final sessionId = json['sessionId'] as String?;
@@ -232,6 +239,13 @@ class SessionManager {
       env: env.isEmpty ? null : env,
     );
     _terminals[handle.terminalId] = handle;
+    _terminalEvents.add(TerminalCreated(
+      terminalId: handle.terminalId,
+      sessionId: sessionId,
+      command: cmd,
+      args: args,
+      cwd: cwd,
+    ));
     return {'terminalId': handle.terminalId};
   }
 
@@ -254,6 +268,12 @@ class SessionManager {
     } on TimeoutException {
       exitCode = null;
     }
+    _terminalEvents.add(TerminalOutputEvent(
+      terminalId: termId,
+      output: output,
+      truncated: false,
+      exitCode: exitCode,
+    ));
     return {
       'output': output,
       'truncated': false,
@@ -280,6 +300,7 @@ class SessionManager {
       };
     }
     final code = await provider.waitForExit(handle);
+    _terminalEvents.add(TerminalExited(terminalId: termId, code: code));
     return {
       'output': handle.currentOutput(),
       'truncated': false,
@@ -304,6 +325,40 @@ class SessionManager {
     if (provider != null && handle != null) {
       await provider.release(handle);
     }
+    _terminalEvents.add(TerminalReleased(terminalId: termId));
     return null;
+  }
+
+  // UI helpers to interact with terminals
+  Future<String> readTerminalOutput(String terminalId) async {
+    final handle = _terminals[terminalId];
+    if (handle == null) return '';
+    return handle.currentOutput();
+  }
+
+  Future<void> killTerminal(String terminalId) async {
+    final provider = config.terminalProvider;
+    final handle = _terminals[terminalId];
+    if (provider != null && handle != null) {
+      await provider.kill(handle);
+    }
+  }
+
+  Future<int?> waitTerminal(String terminalId) async {
+    final provider = config.terminalProvider;
+    final handle = _terminals[terminalId];
+    if (provider != null && handle != null) {
+      final code = await provider.waitForExit(handle);
+      return code;
+    }
+    return null;
+  }
+
+  Future<void> releaseTerminal(String terminalId) async {
+    final provider = config.terminalProvider;
+    final handle = _terminals.remove(terminalId);
+    if (provider != null && handle != null) {
+      await provider.release(handle);
+    }
   }
 }

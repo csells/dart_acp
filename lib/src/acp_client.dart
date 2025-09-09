@@ -4,6 +4,7 @@ import 'capabilities.dart';
 import 'config.dart';
 import 'models/updates.dart';
 import 'rpc/peer.dart';
+import 'models/terminal_events.dart';
 import 'session/session_manager.dart';
 import 'transport/stdio_transport.dart';
 import 'transport/transport.dart';
@@ -59,6 +60,33 @@ class AcpClient {
   Future<void> cancel({required String sessionId}) async {
     _ensureReady();
     return await _sessionManager!.cancel(sessionId: sessionId);
+  }
+
+  // Terminal events stream for UI
+  Stream<TerminalEvent> get terminalEvents {
+    _ensureReady();
+    return _sessionManager!.terminalEvents;
+  }
+
+  // Terminal controls (UI helpers)
+  Future<String> terminalOutput(String terminalId) async {
+    _ensureReady();
+    return _sessionManager!.readTerminalOutput(terminalId);
+  }
+
+  Future<void> terminalKill(String terminalId) async {
+    _ensureReady();
+    await _sessionManager!.killTerminal(terminalId);
+  }
+
+  Future<int?> terminalWaitForExit(String terminalId) async {
+    _ensureReady();
+    return _sessionManager!.waitTerminal(terminalId);
+  }
+
+  Future<void> terminalRelease(String terminalId) async {
+    _ensureReady();
+    await _sessionManager!.releaseTerminal(terminalId);
   }
 
   void _ensureReady() {

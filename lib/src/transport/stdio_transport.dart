@@ -45,11 +45,18 @@ class StdioTransport implements AcpTransport {
     }
 
     Process? proc;
-    final cmd = command ?? 'claude-code-acp';
+    const defaultCmd = 'claude-code-acp';
+    final cmd = command ?? defaultCmd;
     try {
       proc = await spawn(cmd, args);
       logger.fine('Spawned agent: $cmd ${args.join(' ')}');
     } on ProcessException catch (e) {
+      // If the caller explicitly provided a command path/name, do not try to
+      // fall back to npx; surface the error so the UI can give actionable help.
+      if (command != null) {
+        logger.warning('Agent "$cmd" failed to start: ${e.message}');
+        rethrow;
+      }
       logger.info(
         'Agent "$cmd" not found or failed to start: ${e.message}. Falling back to npx.',
       );
