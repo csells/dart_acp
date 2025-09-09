@@ -15,6 +15,23 @@
       "args": [
         "--experimental-acp"
       ]
+    },
+    "mock": {
+      "command": "dart",
+      "args": [
+        "example/mock_agent.dart"
+      ]
     }
   }
+  ,
+  "mcp_servers": [
+    {
+      "name": "filesystem",
+      "command": "/usr/local/bin/mcp-filesystem",
+      "args": ["--stdio"],
+      "env": {
+        "EXAMPLE": "1"
+      }
+    }
+  ]
 }

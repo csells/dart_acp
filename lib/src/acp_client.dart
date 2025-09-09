@@ -51,12 +51,25 @@ class AcpClient {
     return await _sessionManager!.newSession(cwd: cwd);
   }
 
+  Future<void> loadSession({
+    required String sessionId,
+    String? cwd,
+  }) async {
+    _ensureReady();
+    return await _sessionManager!.loadSession(sessionId: sessionId, cwd: cwd);
+  }
+
   Stream<AcpUpdate> prompt({
     required String sessionId,
     required List<Map<String, dynamic>> content,
   }) {
     _ensureReady();
     return _sessionManager!.prompt(sessionId: sessionId, content: content);
+  }
+
+  Stream<AcpUpdate> sessionUpdates(String sessionId) {
+    _ensureReady();
+    return _sessionManager!.sessionUpdates(sessionId);
   }
 
   Future<void> cancel({required String sessionId}) async {

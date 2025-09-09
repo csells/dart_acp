@@ -10,13 +10,16 @@ abstract class FsProvider {
 class DefaultFsProvider implements FsProvider {
   final String workspaceRoot;
   final WorkspaceJail _jail;
+  final bool allowReadOutsideWorkspace;
 
-  DefaultFsProvider({required this.workspaceRoot})
+  DefaultFsProvider({required this.workspaceRoot, this.allowReadOutsideWorkspace = false})
     : _jail = WorkspaceJail(workspaceRoot: workspaceRoot);
 
   @override
   Future<String> readTextFile(String path, {int? line, int? limit}) async {
-    final filePath = await _jail.resolveAndEnsureWithin(path);
+    final filePath = allowReadOutsideWorkspace
+        ? await _jail.resolveForgiving(path)
+        : await _jail.resolveAndEnsureWithin(path);
     final file = File(filePath);
     if (!await file.exists()) {
       throw FileSystemException('File not found', filePath);
@@ -37,7 +40,17 @@ class DefaultFsProvider implements FsProvider {
 
   @override
   Future<void> writeTextFile(String path, String content) async {
-    final filePath = await _jail.resolveAndEnsureWithin(path);
+    // Writes must stay within the workspace; if requested outside, fail with
+    // a descriptive error so the agent can adjust.
+    final canonical = await _jail.resolveForgiving(path);
+    if (!await _jail.isWithinWorkspace(canonical)) {
+      throw FileSystemException(
+        'Write denied: path is outside the workspace root. '
+        'Please write within the project directory or adjust the path.',
+        canonical,
+      );
+    }
+    final filePath = canonical;
     final dir = Directory(p.dirname(filePath));
     if (!await dir.exists()) {
       await dir.create(recursive: true);

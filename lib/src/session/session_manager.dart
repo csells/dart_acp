@@ -29,6 +29,7 @@ class SessionManager {
   final Logger _log;
 
   final Map<String, StreamController<AcpUpdate>> _sessionStreams = {};
+  final Set<String> _cancellingSessions = <String>{};
   final StreamController<TerminalEvent> _terminalEvents =
       StreamController<TerminalEvent>.broadcast();
 
@@ -66,21 +67,30 @@ class SessionManager {
   Future<String> newSession({String? cwd}) async {
     final resp = await peer.newSession({
       'cwd': cwd ?? config.workspaceRoot,
-      'mcpServers': <Map<String, dynamic>>[],
+      'mcpServers': config.mcpServers,
     });
     return resp['sessionId'] as String;
+  }
+
+  Future<void> loadSession({
+    required String sessionId,
+    String? cwd,
+  }) async {
+    await peer.loadSession({
+      'sessionId': sessionId,
+      'cwd': cwd ?? config.workspaceRoot,
+      'mcpServers': config.mcpServers,
+    });
   }
 
   Stream<AcpUpdate> prompt({
     required String sessionId,
     required List<Map<String, dynamic>> content,
   }) {
-    final controller = StreamController<AcpUpdate>(
-      onCancel: () {
-        _sessionStreams.remove(sessionId);
-      },
+    final controller = _sessionStreams.putIfAbsent(
+      sessionId,
+      () => StreamController<AcpUpdate>.broadcast(),
     );
-    _sessionStreams[sessionId] = controller;
 
     () async {
       try {
@@ -92,31 +102,44 @@ class SessionManager {
           (resp['stopReason'] as String?) ?? 'other',
         );
         controller.add(TurnEnded(stop));
+        if (stop == StopReason.cancelled) {
+          _cancellingSessions.remove(sessionId);
+        }
       } catch (e, st) {
         _log.warning('prompt error: $e');
         // Surface error to listeners so UIs can react
         controller.addError(e, st);
-      } finally {
-        await controller.close();
-        _sessionStreams.remove(sessionId);
-      }
+      } finally {}
     }();
 
     return controller.stream;
   }
 
   Future<void> cancel({required String sessionId}) async {
+    _cancellingSessions.add(sessionId);
     await peer.cancel({'sessionId': sessionId});
   }
 
   Stream<TerminalEvent> get terminalEvents => _terminalEvents.stream;
 
+  // Expose a persistent session updates stream (includes replay from
+  // session/load and updates across multiple prompts)
+  Stream<AcpUpdate> sessionUpdates(String sessionId) {
+    final controller = _sessionStreams.putIfAbsent(
+      sessionId,
+      () => StreamController<AcpUpdate>.broadcast(),
+    );
+    return controller.stream;
+  }
+
   void _routeSessionUpdate(Json json) {
     final sessionId = json['sessionId'] as String?;
     final update = json['update'] as Map<String, dynamic>?;
     if (sessionId == null || update == null) return;
-    final sink = _sessionStreams[sessionId];
-    if (sink == null) return;
+    final sink = _sessionStreams.putIfAbsent(
+      sessionId,
+      () => StreamController<AcpUpdate>.broadcast(),
+    );
 
     final kind = update['sessionUpdate'];
     if (kind == 'available_commands_update') {
@@ -166,6 +189,12 @@ class SessionManager {
   }
 
   Future<Json> _onRequestPermission(Json req) async {
+    final reqSessionId = req['sessionId'] as String? ?? '';
+    if (_cancellingSessions.contains(reqSessionId)) {
+      return {
+        'outcome': {'outcome': 'cancelled'},
+      };
+    }
     final options =
         (req['options'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
     final toolCall = (req['toolCall'] as Map<String, dynamic>?);

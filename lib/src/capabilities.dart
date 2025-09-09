@@ -1,14 +1,13 @@
 class AcpCapabilities {
   final FsCapabilities fs;
-  final bool terminal;
 
   const AcpCapabilities({
     this.fs = const FsCapabilities(),
-    this.terminal = false,
   });
 
   Map<String, dynamic> toJson() {
-    return {'fs': fs.toJson(), if (terminal) 'terminal': true};
+    // Only advertise standard capabilities per ACP; avoid custom keys.
+    return {'fs': fs.toJson()};
   }
 }
 
@@ -19,7 +18,7 @@ class FsCapabilities {
   const FsCapabilities({this.readTextFile = true, this.writeTextFile = false});
 
   Map<String, dynamic> toJson() => {
-    if (readTextFile) 'readTextFile': true,
-    if (writeTextFile) 'writeTextFile': true,
+    'readTextFile': readTextFile,
+    'writeTextFile': writeTextFile,
   };
 }

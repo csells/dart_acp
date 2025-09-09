@@ -23,6 +23,19 @@ class WorkspaceJail {
     return canonical;
   }
 
+  // Resolve path relative to workspace if relative, but do not enforce
+  // workspace boundary. Useful for read-anywhere modes.
+  Future<String> resolveForgiving(String path) async {
+    final joined = p.isAbsolute(path) ? path : p.join(workspaceRoot, path);
+    return await _canonicalize(joined);
+  }
+
+  Future<bool> isWithinWorkspace(String path) async {
+    final canonical = await _canonicalize(path);
+    final rootCanonical = await _canonicalize(workspaceRoot);
+    return _isWithin(canonical, rootCanonical);
+  }
+
   bool _isWithin(String path, String root) {
     final normPath = p.normalize(path);
     final normRoot = p.normalize(root);

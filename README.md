@@ -23,6 +23,20 @@ dart example/agcli.dart -a my-agent "Say hello"
 ```
 See `specs/dart_acp_technical_design.md` §17 for full CLI usage.
 
+### Install Agents and ACP Adapters
+
+- Google Gemini CLI (ACP-capable):
+  - Repo: https://github.com/google-gemini/gemini-cli
+  - Install per the README, then authenticate (the CLI supports OAuth-style login flows). Ensure the `gemini` binary is on your PATH.
+  - ACP: enable with `--experimental-acp` (the example `settings.json` uses this flag).
+
+- Claude Code ACP Adapter:
+  - Option A (Node/npm adapter published by Xuanwo): https://github.com/Xuanwo/acp-claude-code
+    - Run via `npx acp-claude-code` (our default in `example/settings.json`) or install globally `npm i -g acp-claude-code` and invoke `acp-claude-code`.
+    - Authenticate per the adapter/Claude Code instructions (OAuth-style login supported).
+  - Option B (Zed’s SDK adapter): https://github.com/zed-industries/claude-code-acp
+    - Use if you prefer Zed’s version; configure the command accordingly.
+
 #### Usage examples
 
 Plain text (default agent):
@@ -37,12 +51,12 @@ dart example/agcli.dart -a my-agent "Summarize README.md"
 
 JSONL (default agent):
 ```bash
-dart example/agcli.dart -j "Summarize README.md"
+dart example/agcli.dart -o jsonl "Summarize README.md"
 ```
 
 JSONL (specific agent):
 ```bash
-dart example/agcli.dart -a my-agent -j "Summarize README.md"
+dart example/agcli.dart -a my-agent -o jsonl "Summarize README.md"
 ```
 
 Reading prompt from stdin:
@@ -54,7 +68,7 @@ echo "Refactor the following code…" | dart example/agcli.dart
 cat PROMPT.md | dart example/agcli.dart
 
 # Pipe with JSONL output
-echo "List available commands" | dart example/agcli.dart -j
+echo "List available commands" | dart example/agcli.dart -o jsonl
 ```
 
 #### Configuring agents (example/settings.json)
@@ -70,6 +84,14 @@ Create or edit `example/settings.json` next to the CLI. Strict JSON (no comments
       "env": {
         "FOO": "bar"
       }
+    },
+    "gemini": {
+      "command": "gemini",
+      "args": ["--experimental-acp"]
+    },
+    "claude-code": {
+      "command": "npx",
+      "args": ["acp-claude-code"]
     },
     "another-agent": {
       "command": "another-agent",

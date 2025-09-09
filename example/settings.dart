@@ -51,8 +51,9 @@ class AgentServerConfig {
 
 class Settings {
   final Map<String, AgentServerConfig> agentServers;
+  final List<McpServerConfig> mcpServers;
 
-  Settings(this.agentServers);
+  Settings(this.agentServers, this.mcpServers);
 
   static Future<Settings> loadFromFile(String path) async {
     final file = File(path);
@@ -81,12 +82,80 @@ class Settings {
     if (map.isEmpty) {
       throw const FormatException('agent_servers must have at least one entry');
     }
-    return Settings(map);
+
+    // Optional: top-level MCP servers
+    final mcpRaw = decoded['mcp_servers'];
+    final mcp = <McpServerConfig>[];
+    if (mcpRaw != null) {
+      if (mcpRaw is! List) {
+        throw const FormatException('mcp_servers must be an array');
+      }
+      for (final e in mcpRaw) {
+        if (e is! Map) {
+          throw const FormatException('mcp_servers[*] must be an object');
+        }
+        mcp.add(McpServerConfig.fromJson(Map<String, dynamic>.from(e)));
+      }
+    }
+
+    return Settings(map, mcp);
   }
 
   static Future<Settings> loadFromScriptDir() async {
     final scriptDir = File.fromUri(Platform.script).parent.path;
     final path = '$scriptDir${Platform.pathSeparator}settings.json';
     return loadFromFile(path);
+  }
+}
+
+class McpServerConfig {
+  final String name;
+  final String command;
+  final List<String> args;
+  final Map<String, String> env;
+
+  McpServerConfig({
+    required this.name,
+    required this.command,
+    this.args = const [],
+    this.env = const {},
+  });
+
+  factory McpServerConfig.fromJson(Map<String, dynamic> json) {
+    final name = json['name'];
+    final cmd = json['command'];
+    if (name is! String || name.trim().isEmpty) {
+      throw const FormatException('mcp_servers[*].name must be a non-empty string');
+    }
+    if (cmd is! String || cmd.trim().isEmpty) {
+      throw const FormatException('mcp_servers[*].command must be a non-empty string');
+    }
+    final argsRaw = json['args'];
+    final args = <String>[];
+    if (argsRaw != null) {
+      if (argsRaw is! List) {
+        throw const FormatException('mcp_servers[*].args must be an array of strings');
+      }
+      for (final e in argsRaw) {
+        if (e is! String) {
+          throw const FormatException('mcp_servers[*].args must be an array of strings');
+        }
+        args.add(e);
+      }
+    }
+    final envRaw = json['env'];
+    final env = <String, String>{};
+    if (envRaw != null) {
+      if (envRaw is! Map) {
+        throw const FormatException('mcp_servers[*].env must be an object of string to string');
+      }
+      envRaw.forEach((k, v) {
+        if (k is! String || v is! String) {
+          throw const FormatException('mcp_servers[*].env must be an object of string to string');
+        }
+        env[k] = v;
+      });
+    }
+    return McpServerConfig(name: name, command: cmd, args: args, env: env);
   }
 }

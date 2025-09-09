@@ -22,6 +22,10 @@ class AcpConfig {
   final List<String> agentArgs;
   final Map<String, String> envOverrides; // additive only
   final AcpCapabilities capabilities;
+  // Global MCP servers (forwarded to session/new and session/load)
+  final List<Map<String, dynamic>> mcpServers;
+  // Allow reads outside workspace (yolo mode)
+  final bool allowReadOutsideWorkspace;
   final AcpTimeouts timeouts;
   final Logger logger;
   // Optional taps for raw JSON-RPC frames (unprefixed JSONL). If provided,
@@ -40,6 +44,8 @@ class AcpConfig {
     this.agentArgs = const [],
     this.envOverrides = const {},
     this.capabilities = const AcpCapabilities(),
+    this.mcpServers = const [],
+    this.allowReadOutsideWorkspace = false,
     this.timeouts = const AcpTimeouts(),
     Logger? logger,
     FsProvider? fsProvider,
@@ -48,8 +54,11 @@ class AcpConfig {
     this.onProtocolOut,
     this.onProtocolIn,
   }) : logger = logger ?? Logger('dart_acp'),
-       fsProvider =
-           fsProvider ?? DefaultFsProvider(workspaceRoot: workspaceRoot),
+       fsProvider = fsProvider ??
+           DefaultFsProvider(
+             workspaceRoot: workspaceRoot,
+             allowReadOutsideWorkspace: allowReadOutsideWorkspace,
+           ),
        permissionProvider =
            permissionProvider ?? const DefaultPermissionProvider();
 }

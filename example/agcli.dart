@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:dart_acp/dart_acp.dart';
 import 'settings.dart';
+import 'package:mime/mime.dart' as mime;
+import 'package:path/path.dart' as p;
 
 Future<void> main(List<String> argv) async {
   final args = _Args.parse(argv);
@@ -34,7 +36,7 @@ Future<void> main(List<String> argv) async {
   }
 
   // Emit client-side JSONL metadata about the selected agent (stdout only).
-  if (args.jsonl) {
+  if (args.output.isJsonLike) {
     final meta = {
       'jsonrpc': '2.0',
       'method': 'client/selected_agent',
@@ -47,15 +49,32 @@ Future<void> main(List<String> argv) async {
   }
 
   // Build client
+  final mcpServers = settings.mcpServers
+      .map((s) => {
+            'name': s.name,
+            'command': s.command,
+            'args': s.args,
+            if (s.env.isNotEmpty)
+              'env': s.env.entries
+                  .map((e) => {'name': e.key, 'value': e.value})
+                  .toList(),
+          })
+      .toList();
+
   final client = AcpClient(
     config: AcpConfig(
       workspaceRoot: cwd,
       agentCommand: agent.command,
       agentArgs: agent.args,
       envOverrides: agent.env,
-      capabilities: const AcpCapabilities(
-        fs: FsCapabilities(readTextFile: true, writeTextFile: true),
+      capabilities: AcpCapabilities(
+        fs: FsCapabilities(
+          readTextFile: true,
+          writeTextFile: args.write || args.yolo,
+        ),
       ),
+      mcpServers: mcpServers,
+      allowReadOutsideWorkspace: args.yolo,
       permissionProvider: DefaultPermissionProvider(
         onRequest: (opts) async {
           // Simple CLI prompt. Auto-allow in non-interactive environments.
@@ -78,8 +97,9 @@ Future<void> main(List<String> argv) async {
           return PermissionOutcome.deny;
         },
       ),
-      onProtocolOut: args.jsonl ? (line) => stdout.writeln(line) : null,
-      onProtocolIn: args.jsonl ? (line) => stdout.writeln(line) : null,
+      onProtocolOut: args.output.isJsonLike ? (line) => stdout.writeln(line) : null,
+      onProtocolIn: args.output.isJsonLike ? (line) => stdout.writeln(line) : null,
+      terminalProvider: DefaultTerminalProvider(),
     ),
   );
 
@@ -104,11 +124,41 @@ Future<void> main(List<String> argv) async {
 
   await client.start();
   await client.initialize();
-  _sessionId = await client.newSession();
+  if (args.resumeSessionId != null) {
+    _sessionId = args.resumeSessionId;
+    await client.loadSession(sessionId: _sessionId!);
+  } else {
+    _sessionId = await client.newSession();
+    if (args.saveSessionPath != null) {
+      try {
+        await File(args.saveSessionPath!).writeAsString(_sessionId!);
+      } catch (e) {
+        stderr.writeln('Warning: failed to save session id: $e');
+      }
+    }
+  }
 
+  // Subscribe terminal events (text mode only)
+  if (args.output == OutputMode.text) {
+    client.terminalEvents.listen((e) {
+      if (e is TerminalCreated) {
+        stdout.writeln('[term] created id=${e.terminalId} cmd=${e.command}');
+      } else if (e is TerminalOutputEvent) {
+        if (e.output.isNotEmpty) {
+          stdout.writeln('[term] output id=${e.terminalId}');
+        }
+      } else if (e is TerminalExited) {
+        stdout.writeln('[term] exited id=${e.terminalId} code=${e.code}');
+      } else if (e is TerminalReleased) {
+        stdout.writeln('[term] released id=${e.terminalId}');
+      }
+    });
+  }
+
+  final content = _buildContentBlocks(prompt, cwd: cwd);
   final updates = client.prompt(
     sessionId: _sessionId!,
-    content: [AcpClient.text(prompt)],
+    content: content,
   );
 
   // In JSONL mode, do not print plain text; only JSONL is emitted to stdout
@@ -116,14 +166,38 @@ Future<void> main(List<String> argv) async {
   // No buffer needed; we either stream plain text (default) or emit JSONL only.
   await for (final u in updates) {
     if (u is MessageDelta) {
-      final texts = u.content
-          .where((b) => b['type'] == 'text')
-          .map((b) => b['text'] as String)
-          .join();
-      if (texts.isEmpty) continue;
-      if (!args.jsonl) stdout.writeln(texts);
+      if (args.output.isJsonLike || args.output == OutputMode.simple) {
+        // suppress human prints
+      } else {
+        final texts = u.content
+            .where((b) => b['type'] == 'text')
+            .map((b) => b['text'] as String)
+            .join();
+        if (texts.isNotEmpty) stdout.writeln(texts);
+      }
+    } else if (u is PlanUpdate) {
+      if (args.output == OutputMode.text) {
+        stdout.writeln('[plan] ${jsonEncode(u.plan)}');
+      }
+    } else if (u is ToolCallUpdate) {
+      if (args.output == OutputMode.text) {
+        stdout.writeln('[tool] ${jsonEncode(u.toolCall)}');
+      }
+    } else if (u is DiffUpdate) {
+      if (args.output == OutputMode.text) {
+        stdout.writeln('[diff] ${jsonEncode(u.diff)}');
+      }
+    } else if (u is AvailableCommandsUpdate) {
+      if (args.output == OutputMode.text) {
+        final names = u.commands
+            .map((c) => (c['name'] ?? c['title'] ?? '').toString())
+            .where((s) => s.isNotEmpty)
+            .join(', ');
+        stdout.writeln('[commands] ${names.isEmpty ? jsonEncode(u.commands) : names}');
+      }
     } else if (u is TurnEnded) {
-      break; // End the app after the turn ends
+      // In text/simple, do not print a 'Turn ended' line per request.
+      break;
     }
   }
 
@@ -145,22 +219,37 @@ String? _sessionId;
 
 class _Args {
   final String? agentName;
-  final bool jsonl;
+  final OutputMode output;
   final bool help;
+  final bool yolo;
+  final bool write;
+  final String? resumeSessionId;
+  final String? saveSessionPath;
   final String? prompt;
 
-  _Args({this.agentName, required this.jsonl, required this.help, this.prompt});
+  _Args({
+    this.agentName,
+    required this.output,
+    required this.help,
+    this.yolo = false,
+    this.write = false,
+    this.resumeSessionId,
+    this.saveSessionPath,
+    this.prompt,
+  });
 
   static _Args parse(List<String> argv) {
     String? agent;
-    bool jsonl = false;
+    var output = OutputMode.text;
     bool help = false;
+    bool yolo = false;
+    bool write = false;
+    String? resume;
+    String? savePath;
     final rest = <String>[];
     for (var i = 0; i < argv.length; i++) {
       final a = argv[i];
-      if (a == '-j' || a == '--jsonl') {
-        jsonl = true;
-      } else if (a == '-h' || a == '--help') {
+      if (a == '-h' || a == '--help') {
         help = true;
       } else if (a == '-a' || a == '--agent') {
         if (i + 1 >= argv.length) {
@@ -169,8 +258,33 @@ class _Args {
           exit(2);
         }
         agent = argv[++i];
+      } else if (a == '-o' || a == '--output') {
+        if (i + 1 >= argv.length) {
+          stderr.writeln('Error: --output requires a value');
+          _printUsage();
+          exit(2);
+        }
+        final mode = argv[++i];
+        output = parseOutputMode(mode);
+      } else if (a == '--yolo') {
+        yolo = true;
+      } else if (a == '--write') {
+        write = true;
+      } else if (a == '--resume') {
+        if (i + 1 >= argv.length) {
+          stderr.writeln('Error: --resume requires a sessionId');
+          _printUsage();
+          exit(2);
+        }
+        resume = argv[++i];
+      } else if (a == '--save-session') {
+        if (i + 1 >= argv.length) {
+          stderr.writeln('Error: --save-session requires a path');
+          _printUsage();
+          exit(2);
+        }
+        savePath = argv[++i];
       } else if (a == '--') {
-        // Remainder is prompt
         if (i + 1 < argv.length) {
           rest.addAll(argv.sublist(i + 1));
         }
@@ -184,8 +298,32 @@ class _Args {
       }
     }
     final prompt = rest.isNotEmpty ? rest.join(' ') : null;
-    return _Args(agentName: agent, jsonl: jsonl, help: help, prompt: prompt);
+    return _Args(
+      agentName: agent,
+      output: output,
+      help: help,
+      yolo: yolo,
+      write: write,
+      resumeSessionId: resume,
+      saveSessionPath: savePath,
+      prompt: prompt,
+    );
   }
+}
+
+enum OutputMode { text, simple, jsonl }
+
+OutputMode parseOutputMode(String s) {
+  final v = s.toLowerCase().trim();
+  if (v == 'text') return OutputMode.text;
+  if (v == 'simple') return OutputMode.simple;
+  if (v == 'json' || v == 'jsonl') return OutputMode.jsonl;
+  stderr.writeln('Error: invalid output mode: $s (expected jsonl|json|text|simple)');
+  exit(2);
+}
+
+extension OutputModeX on OutputMode {
+  bool get isJsonLike => this == OutputMode.jsonl;
 }
 
 void _printUsage() {
@@ -193,14 +331,97 @@ void _printUsage() {
   stdout.writeln('Usage: dart example/agcli.dart [options] [--] [prompt]');
   stdout.writeln('');
   stdout.writeln('Options:');
-  stdout.writeln('  -a, --agent <name>   Select agent from settings.json next to this CLI');
-  stdout.writeln('  -j, --jsonl          Emit protocol JSON-RPC frames to stdout (no plain text)');
-  stdout.writeln('  -h, --help           Show this help and exit');
+  stdout.writeln('  -a, --agent <name>     Select agent from settings.json next to this CLI');
+  stdout.writeln('  -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)');
+  stdout.writeln('      --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)');
+  stdout.writeln('      --write            Enable write capability (still confined to CWD)');
+  stdout.writeln('      --resume <id>      Resume an existing session (replay), then send the prompt');
+  stdout.writeln('      --save-session <p> Save new sessionId to file');
+  stdout.writeln('  -h, --help             Show this help and exit');
   stdout.writeln('');
   stdout.writeln('Prompt:');
   stdout.writeln('  Provide as a positional argument, or pipe via stdin.');
+  stdout.writeln('  Use @-mentions to add context: @path, @"a file.txt", @https://example.com/file');
   stdout.writeln('');
   stdout.writeln('Examples:');
   stdout.writeln('  dart example/agcli.dart -a my-agent "Summarize README.md"');
-  stdout.writeln('  echo "List available commands" | dart example/agcli.dart -j');
+  stdout.writeln('  echo "List available commands" | dart example/agcli.dart -o jsonl');
+}
+
+List<Map<String, dynamic>> _buildContentBlocks(String prompt, {required String cwd}) {
+  final blocks = <Map<String, dynamic>>[];
+  // Always include the original user text with @-mentions untouched.
+  blocks.add({'type': 'text', 'text': prompt});
+
+  final mentions = _extractMentions(prompt);
+  for (final m in mentions) {
+    final uri = _toUri(m, cwd: cwd);
+    if (uri == null) continue; // skip malformed
+    final name = _displayNameFor(uri);
+    final mimeType = mime.lookupMimeType(uri.path) ?? mime.lookupMimeType(uri.toString());
+    final block = {
+      'type': 'resource_link',
+      'name': name,
+      'uri': uri.toString(),
+      if (mimeType != null) 'mimeType': mimeType,
+    };
+    blocks.add(block);
+  }
+  return blocks;
+}
+
+final _mentionRe = RegExp(r'''@("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\S+)''');
+
+List<String> _extractMentions(String text) {
+  final matches = _mentionRe.allMatches(text);
+  final out = <String>[];
+  for (final m in matches) {
+    var token = m.group(1)!;
+    // Strip surrounding quotes and unescape simple escapes
+    if ((token.startsWith('"') && token.endsWith('"')) ||
+        (token.startsWith("'") && token.endsWith("'"))) {
+      token = token.substring(1, token.length - 1);
+    }
+    out.add(token);
+  }
+  return out;
+}
+
+Uri? _toUri(String token, {required String cwd}) {
+  // URLs
+  if (token.startsWith('http://') || token.startsWith('https://')) {
+    try {
+      return Uri.parse(token);
+    } catch (_) {
+      stderr.writeln('Warning: invalid URL mention: @$token');
+      return null;
+    }
+  }
+  // Local file path
+  String path = token;
+  if (path.startsWith('~')) {
+    final home = Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      path = p.join(home, path.substring(1));
+    }
+  }
+  if (!p.isAbsolute(path)) {
+    path = p.join(cwd, path);
+  }
+  // Canonicalize a bit
+  path = p.normalize(path);
+
+  final file = File(path);
+  if (!file.existsSync()) {
+    stderr.writeln('Warning: local path not found for mention: @$token');
+  }
+  return Uri.file(path);
+}
+
+String _displayNameFor(Uri uri) {
+  if (uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    final segs = uri.pathSegments;
+    return segs.isNotEmpty ? segs.last : uri.host;
+  }
+  return p.basename(uri.path);
 }

@@ -363,7 +363,11 @@ dart example/agcli.dart [options] [--] [prompt]
 ### 17.2 Options
 
 - `-a, --agent <name>`: Selects an agent by key from `settings.json` (script directory) → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
-- `-j, --jsonl`: Emits raw JSON‑RPC frames to stdout as JSON Lines (raw, unprefixed) and suppresses plain‑text stdout.
+- `-o, --output <mode>`: One of `jsonl|json|text|simple` (default: `text`). `json` is an alias for `jsonl`. In `jsonl`/`json` modes, all protocol frames are mirrored to stdout and no human text is printed.
+- `--yolo`: Enables read‑everywhere and write capability; writes remain confined to the CWD (outside‑workspace writes are denied with a descriptive error).
+- `--write`: Enables `fs.writeTextFile` capability (still confined to the CWD).
+- `--resume <sessionId>`: Calls `session/load` then sends the prompt.
+- `--save-session <path>`: Saves a newly created `sessionId` to the specified file.
 - `-h, --help`: Prints usage and exits.
 
 ### 17.3 Configuration (`settings.json` next to CLI)
@@ -383,7 +387,15 @@ Example:
         "ACP_DEBUG": "true"
       }
     }
-  }
+  },
+  "mcp_servers": [
+    {
+      "name": "filesystem",
+      "command": "/abs/path/to/mcp-server",
+      "args": ["--stdio"],
+      "env": { "FOO": "bar" }
+    }
+  ]
 }
 ```
 
@@ -395,13 +407,15 @@ Example:
 
 ### 17.5 Output
 
-- Stdout: human‑friendly streaming information:
-  - Assistant message text chunks as they arrive (role‑prefixed lines).  
+- `-o text` (default): human‑friendly streaming information:
+  - Assistant message text chunks as they arrive.  
   - Plan updates (`[plan] ...`).  
   - Tool call updates (`[tool] ...`).  
+  - Diffs (`[diff] ...`).  
   - Available commands (`[commands] ...`).  
-  - Turn end (`Turn ended: <StopReason>`).  
-- Stdout: when `-j/--jsonl` is set, raw JSON‑RPC frames (JSONL) for both directions. Stderr remains reserved for errors/diagnostics.
+  - Note: no explicit "Turn ended" line is printed.
+- `-o simple`: only the assistant’s streaming text chunks.
+- `-o jsonl|json`: raw JSON‑RPC frames (JSON Lines) for both directions. Stderr is used for errors/diagnostics only.
 
 ### 17.6 Exit Codes
 
@@ -415,8 +429,8 @@ Example:
 dart example/agcli.dart "Summarize README.md"
 
 # Select agent explicitly and enable JSONL protocol mirroring
-dart example/agcli.dart -a my-agent -j "List available commands"
+dart example/agcli.dart -a my-agent -o jsonl "List available commands"
 
 # Read prompt from stdin
-echo "Refactor the following code…" | dart example/agcli.dart -j
+echo "Refactor the following code…" | dart example/agcli.dart -o jsonl
 ```

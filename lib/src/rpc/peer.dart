@@ -110,5 +110,5 @@ class JsonRpcPeer {
   );
 
   Future<void> cancel(Json params) async =>
-      await _peer.sendRequest('session/cancel', params);
+      _peer.sendNotification('session/cancel', params);
 }
