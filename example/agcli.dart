@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_acp/dart_acp.dart';
-import 'settings.dart';
 import 'package:mime/mime.dart' as mime;
 import 'package:path/path.dart' as p;
+
+import 'settings.dart';
 
 Future<void> main(List<String> argv) async {
   final args = _Args.parse(argv);
@@ -40,25 +41,24 @@ Future<void> main(List<String> argv) async {
     final meta = {
       'jsonrpc': '2.0',
       'method': 'client/selected_agent',
-      'params': {
-        'name': agentName,
-        'command': agent.command,
-      }
+      'params': {'name': agentName, 'command': agent.command},
     };
     stdout.writeln(jsonEncode(meta));
   }
 
   // Build client
   final mcpServers = settings.mcpServers
-      .map((s) => {
-            'name': s.name,
-            'command': s.command,
-            'args': s.args,
-            if (s.env.isNotEmpty)
-              'env': s.env.entries
-                  .map((e) => {'name': e.key, 'value': e.value})
-                  .toList(),
-          })
+      .map(
+        (s) => {
+          'name': s.name,
+          'command': s.command,
+          'args': s.args,
+          if (s.env.isNotEmpty)
+            'env': s.env.entries
+                .map((e) => {'name': e.key, 'value': e.value})
+                .toList(),
+        },
+      )
       .toList();
 
   final client = AcpClient(
@@ -83,7 +83,8 @@ Future<void> main(List<String> argv) async {
             return PermissionOutcome.allow;
           }
           stdout.writeln(
-            'Permission requested: ${opts.toolName}${opts.toolKind != null ? ' (${opts.toolKind})' : ''}',
+            'Permission requested: ${opts.toolName}'
+            '${opts.toolKind != null ? ' (${opts.toolKind})' : ''}',
           );
           if (opts.rationale.isNotEmpty) {
             stdout.writeln('Rationale: ${opts.rationale}');
@@ -97,8 +98,12 @@ Future<void> main(List<String> argv) async {
           return PermissionOutcome.deny;
         },
       ),
-      onProtocolOut: args.output.isJsonLike ? (line) => stdout.writeln(line) : null,
-      onProtocolIn: args.output.isJsonLike ? (line) => stdout.writeln(line) : null,
+      onProtocolOut: args.output.isJsonLike
+          ? (line) => stdout.writeln(line)
+          : null,
+      onProtocolIn: args.output.isJsonLike
+          ? (line) => stdout.writeln(line)
+          : null,
       terminalProvider: DefaultTerminalProvider(),
     ),
   );
@@ -132,7 +137,7 @@ Future<void> main(List<String> argv) async {
     if (args.saveSessionPath != null) {
       try {
         await File(args.saveSessionPath!).writeAsString(_sessionId!);
-      } catch (e) {
+      } on Exception catch (e) {
         stderr.writeln('Warning: failed to save session id: $e');
       }
     }
@@ -156,10 +161,7 @@ Future<void> main(List<String> argv) async {
   }
 
   final content = _buildContentBlocks(prompt, cwd: cwd);
-  final updates = client.prompt(
-    sessionId: _sessionId!,
-    content: content,
-  );
+  final updates = client.prompt(sessionId: _sessionId!, content: content);
 
   // In JSONL mode, do not print plain text; only JSONL is emitted to stdout
   // via protocol taps. In plain mode, stream assistant text chunks to stdout.
@@ -193,7 +195,9 @@ Future<void> main(List<String> argv) async {
             .map((c) => (c['name'] ?? c['title'] ?? '').toString())
             .where((s) => s.isNotEmpty)
             .join(', ');
-        stdout.writeln('[commands] ${names.isEmpty ? jsonEncode(u.commands) : names}');
+        stdout.writeln(
+          '[commands] ${names.isEmpty ? jsonEncode(u.commands) : names}',
+        );
       }
     } else if (u is TurnEnded) {
       // In text/simple, do not print a 'Turn ended' line per request.
@@ -211,13 +215,24 @@ Future<String?> _readPrompt(_Args args) async {
   if (args.prompt != null) return args.prompt;
   if (!stdin.hasTerminal) {
     // Read entire stdin as UTF-8
-    return await stdin.transform(utf8.decoder).join();
+    return stdin.transform(utf8.decoder).join();
   }
   return null;
 }
+
 String? _sessionId;
 
 class _Args {
+  _Args({
+    required this.output,
+    required this.help,
+    this.agentName,
+    this.yolo = false,
+    this.write = false,
+    this.resumeSessionId,
+    this.saveSessionPath,
+    this.prompt,
+  });
   final String? agentName;
   final OutputMode output;
   final bool help;
@@ -227,23 +242,12 @@ class _Args {
   final String? saveSessionPath;
   final String? prompt;
 
-  _Args({
-    this.agentName,
-    required this.output,
-    required this.help,
-    this.yolo = false,
-    this.write = false,
-    this.resumeSessionId,
-    this.saveSessionPath,
-    this.prompt,
-  });
-
   static _Args parse(List<String> argv) {
     String? agent;
     var output = OutputMode.text;
-    bool help = false;
-    bool yolo = false;
-    bool write = false;
+    var help = false;
+    var yolo = false;
+    var write = false;
     String? resume;
     String? savePath;
     final rest = <String>[];
@@ -318,7 +322,9 @@ OutputMode parseOutputMode(String s) {
   if (v == 'text') return OutputMode.text;
   if (v == 'simple') return OutputMode.simple;
   if (v == 'json' || v == 'jsonl') return OutputMode.jsonl;
-  stderr.writeln('Error: invalid output mode: $s (expected jsonl|json|text|simple)');
+  stderr.writeln(
+    'Error: invalid output mode: $s (expected jsonl|json|text|simple)',
+  );
   exit(2);
 }
 
@@ -331,24 +337,41 @@ void _printUsage() {
   stdout.writeln('Usage: dart example/agcli.dart [options] [--] [prompt]');
   stdout.writeln('');
   stdout.writeln('Options:');
-  stdout.writeln('  -a, --agent <name>     Select agent from settings.json next to this CLI');
-  stdout.writeln('  -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)');
-  stdout.writeln('      --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)');
-  stdout.writeln('      --write            Enable write capability (still confined to CWD)');
-  stdout.writeln('      --resume <id>      Resume an existing session (replay), then send the prompt');
+  stdout.writeln(
+    '  -a, --agent <name>     Select agent from settings.json next to this CLI',
+  );
+  stdout.writeln(
+    '  -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)',
+  );
+  stdout.writeln(
+    '      --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)',
+  );
+  stdout.writeln(
+    '      --write            Enable write capability (still confined to CWD)',
+  );
+  stdout.writeln(
+    '      --resume <id>      Resume an existing session (replay), then send the prompt',
+  );
   stdout.writeln('      --save-session <p> Save new sessionId to file');
   stdout.writeln('  -h, --help             Show this help and exit');
   stdout.writeln('');
   stdout.writeln('Prompt:');
   stdout.writeln('  Provide as a positional argument, or pipe via stdin.');
-  stdout.writeln('  Use @-mentions to add context: @path, @"a file.txt", @https://example.com/file');
+  stdout.writeln(
+    '  Use @-mentions to add context: @path, @"a file.txt", @https://example.com/file',
+  );
   stdout.writeln('');
   stdout.writeln('Examples:');
   stdout.writeln('  dart example/agcli.dart -a my-agent "Summarize README.md"');
-  stdout.writeln('  echo "List available commands" | dart example/agcli.dart -o jsonl');
+  stdout.writeln(
+    '  echo "List available commands" | dart example/agcli.dart -o jsonl',
+  );
 }
 
-List<Map<String, dynamic>> _buildContentBlocks(String prompt, {required String cwd}) {
+List<Map<String, dynamic>> _buildContentBlocks(
+  String prompt, {
+  required String cwd,
+}) {
   final blocks = <Map<String, dynamic>>[];
   // Always include the original user text with @-mentions untouched.
   blocks.add({'type': 'text', 'text': prompt});
@@ -358,7 +381,8 @@ List<Map<String, dynamic>> _buildContentBlocks(String prompt, {required String c
     final uri = _toUri(m, cwd: cwd);
     if (uri == null) continue; // skip malformed
     final name = _displayNameFor(uri);
-    final mimeType = mime.lookupMimeType(uri.path) ?? mime.lookupMimeType(uri.toString());
+    final mimeType =
+        mime.lookupMimeType(uri.path) ?? mime.lookupMimeType(uri.toString());
     final block = {
       'type': 'resource_link',
       'name': name,
@@ -398,7 +422,7 @@ Uri? _toUri(String token, {required String cwd}) {
     }
   }
   // Local file path
-  String path = token;
+  var path = token;
   if (path.startsWith('~')) {
     final home = Platform.environment['HOME'];
     if (home != null && home.isNotEmpty) {

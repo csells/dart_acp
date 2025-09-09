@@ -1,12 +1,7 @@
 enum PermissionOutcome { allow, deny, cancelled }
 
 class PermissionOptions {
-  final String title;
-  final String rationale;
-  final List<String> options; // display-only options from agent
-  final String sessionId;
-  final String toolName;
-  final String? toolKind; // read/edit/execute/etc
+  // read/edit/execute/etc
 
   PermissionOptions({
     required this.title,
@@ -16,6 +11,12 @@ class PermissionOptions {
     required this.toolName,
     this.toolKind,
   });
+  final String title;
+  final String rationale;
+  final List<String> options; // display-only options from agent
+  final String sessionId;
+  final String toolName;
+  final String? toolKind;
 }
 
 abstract class PermissionProvider {
@@ -26,13 +27,13 @@ typedef PermissionCallback =
     Future<PermissionOutcome> Function(PermissionOptions options);
 
 class DefaultPermissionProvider implements PermissionProvider {
-  final PermissionCallback? onRequest;
   const DefaultPermissionProvider({this.onRequest});
+  final PermissionCallback? onRequest;
 
   @override
   Future<PermissionOutcome> request(PermissionOptions options) async {
     if (onRequest != null) {
-      return await onRequest!(options);
+      return onRequest!(options);
     }
     // Defaults: allow read; deny write/execute; others deny.
     final lowerName = options.toolName.toLowerCase();

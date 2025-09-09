@@ -5,37 +5,41 @@ sealed class AcpUpdate {
 }
 
 class PlanUpdate extends AcpUpdate {
-  final Map<String, dynamic> plan; // structure TBD
+  // structure TBD
   const PlanUpdate(this.plan);
+  final Map<String, dynamic> plan;
 }
 
 class MessageDelta extends AcpUpdate {
-  final String role; // 'assistant' or 'user'
-  final List<Map<String, dynamic>> content; // content blocks
+  // content blocks
   const MessageDelta({required this.role, required this.content});
+  final String role; // 'assistant' or 'user'
+  final List<Map<String, dynamic>> content;
 }
 
 class ToolCallUpdate extends AcpUpdate {
-  final Map<String, dynamic> toolCall; // created/updated/completed
+  // created/updated/completed
   const ToolCallUpdate(this.toolCall);
+  final Map<String, dynamic> toolCall;
 }
 
 class DiffUpdate extends AcpUpdate {
-  final Map<String, dynamic> diff; // file diffs
+  // file diffs
   const DiffUpdate(this.diff);
+  final Map<String, dynamic> diff;
 }
 
 class AvailableCommandsUpdate extends AcpUpdate {
-  final List<Map<String, dynamic>> commands;
   const AvailableCommandsUpdate(this.commands);
+  final List<Map<String, dynamic>> commands;
 }
 
 class TurnEnded extends AcpUpdate {
-  final StopReason stopReason;
   const TurnEnded(this.stopReason);
+  final StopReason stopReason;
 }
 
 class UnknownUpdate extends AcpUpdate {
-  final Map<String, dynamic> raw;
   const UnknownUpdate(this.raw);
+  final Map<String, dynamic> raw;
 }

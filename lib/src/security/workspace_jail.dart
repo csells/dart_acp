@@ -2,13 +2,12 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 class WorkspaceJail {
-  final String workspaceRoot;
-
   WorkspaceJail({required this.workspaceRoot}) {
     if (!p.isAbsolute(workspaceRoot)) {
       throw ArgumentError('workspaceRoot must be absolute: $workspaceRoot');
     }
   }
+  final String workspaceRoot;
 
   Future<String> resolveAndEnsureWithin(String path) async {
     final joined = p.isAbsolute(path) ? path : p.join(workspaceRoot, path);
@@ -27,7 +26,7 @@ class WorkspaceJail {
   // workspace boundary. Useful for read-anywhere modes.
   Future<String> resolveForgiving(String path) async {
     final joined = p.isAbsolute(path) ? path : p.join(workspaceRoot, path);
-    return await _canonicalize(joined);
+    return _canonicalize(joined);
   }
 
   Future<bool> isWithinWorkspace(String path) async {

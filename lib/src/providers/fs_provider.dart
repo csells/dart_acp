@@ -8,12 +8,13 @@ abstract class FsProvider {
 }
 
 class DefaultFsProvider implements FsProvider {
+  DefaultFsProvider({
+    required this.workspaceRoot,
+    this.allowReadOutsideWorkspace = false,
+  }) : _jail = WorkspaceJail(workspaceRoot: workspaceRoot);
   final String workspaceRoot;
   final WorkspaceJail _jail;
   final bool allowReadOutsideWorkspace;
-
-  DefaultFsProvider({required this.workspaceRoot, this.allowReadOutsideWorkspace = false})
-    : _jail = WorkspaceJail(workspaceRoot: workspaceRoot);
 
   @override
   Future<String> readTextFile(String path, {int? line, int? limit}) async {

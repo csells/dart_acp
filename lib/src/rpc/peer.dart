@@ -5,15 +5,14 @@ import 'package:stream_channel/stream_channel.dart';
 typedef Json = Map<String, dynamic>;
 
 class JsonRpcPeer {
-  final rpc.Peer _peer;
-  final StreamController<Json> _sessionUpdates = StreamController.broadcast();
-
-  Stream<Json> get sessionUpdates => _sessionUpdates.stream;
-
   JsonRpcPeer(StreamChannel<String> channel) : _peer = rpc.Peer(channel) {
     _registerClientHandlers();
     _peer.listen();
   }
+  final rpc.Peer _peer;
+  final StreamController<Json> _sessionUpdates = StreamController.broadcast();
+
+  Stream<Json> get sessionUpdates => _sessionUpdates.stream;
 
   void _registerClientHandlers() {
     _peer.registerMethod('session/update', (rpc.Parameters params) async {
@@ -28,14 +27,14 @@ class JsonRpcPeer {
         throw rpc.RpcException.methodNotFound('fs/read_text_file');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onReadTextFile!(json);
+      return onReadTextFile!(json);
     });
     _peer.registerMethod('fs/write_text_file', (rpc.Parameters params) async {
       if (onWriteTextFile == null) {
         throw rpc.RpcException.methodNotFound('fs/write_text_file');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onWriteTextFile!(json);
+      return onWriteTextFile!(json);
     });
     _peer.registerMethod('session/request_permission', (
       rpc.Parameters params,
@@ -44,21 +43,21 @@ class JsonRpcPeer {
         throw rpc.RpcException.methodNotFound('session/request_permission');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onRequestPermission!(json);
+      return onRequestPermission!(json);
     });
     _peer.registerMethod('terminal/create', (rpc.Parameters params) async {
       if (onTerminalCreate == null) {
         throw rpc.RpcException.methodNotFound('terminal/create');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onTerminalCreate!(json);
+      return onTerminalCreate!(json);
     });
     _peer.registerMethod('terminal/output', (rpc.Parameters params) async {
       if (onTerminalOutput == null) {
         throw rpc.RpcException.methodNotFound('terminal/output');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onTerminalOutput!(json);
+      return onTerminalOutput!(json);
     });
     _peer.registerMethod('terminal/wait_for_exit', (
       rpc.Parameters params,
@@ -67,21 +66,21 @@ class JsonRpcPeer {
         throw rpc.RpcException.methodNotFound('terminal/wait_for_exit');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onTerminalWaitForExit!(json);
+      return onTerminalWaitForExit!(json);
     });
     _peer.registerMethod('terminal/kill', (rpc.Parameters params) async {
       if (onTerminalKill == null) {
         throw rpc.RpcException.methodNotFound('terminal/kill');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onTerminalKill!(json);
+      return onTerminalKill!(json);
     });
     _peer.registerMethod('terminal/release', (rpc.Parameters params) async {
       if (onTerminalRelease == null) {
         throw rpc.RpcException.methodNotFound('terminal/release');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
-      return await onTerminalRelease!(json);
+      return onTerminalRelease!(json);
     });
   }
 
@@ -103,7 +102,7 @@ class JsonRpcPeer {
       Map<String, dynamic>.from(await _peer.sendRequest('session/new', params));
 
   Future<void> loadSession(Json params) async =>
-      await _peer.sendRequest('session/load', params);
+      _peer.sendRequest('session/load', params);
 
   Future<Json> prompt(Json params) async => Map<String, dynamic>.from(
     await _peer.sendRequest('session/prompt', params),

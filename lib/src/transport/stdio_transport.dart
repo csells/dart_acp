@@ -5,6 +5,15 @@ import '../rpc/line_channel.dart';
 import '../transport/transport.dart';
 
 class StdioTransport implements AcpTransport {
+  StdioTransport({
+    required this.cwd,
+    required this.logger,
+    this.command,
+    this.args = const [],
+    this.envOverrides = const {},
+    this.onProtocolOut,
+    this.onProtocolIn,
+  });
   final String? command;
   final List<String> args;
   final String cwd;
@@ -15,16 +24,6 @@ class StdioTransport implements AcpTransport {
 
   Process? _process;
   LineJsonChannel? _channel;
-
-  StdioTransport({
-    required this.cwd,
-    this.command,
-    this.args = const [],
-    this.envOverrides = const {},
-    required this.logger,
-    this.onProtocolOut,
-    this.onProtocolIn,
-  });
 
   @override
   StreamChannel<String> get channel {
@@ -39,14 +38,8 @@ class StdioTransport implements AcpTransport {
     final baseEnv = Map<String, String>.from(Platform.environment);
     baseEnv.addAll(envOverrides);
 
-    Future<Process> spawn(String cmd, List<String> a) async {
-      return await Process.start(
-        cmd,
-        a,
-        workingDirectory: cwd,
-        environment: baseEnv,
-      );
-    }
+    Future<Process> spawn(String cmd, List<String> a) async =>
+        Process.start(cmd, a, workingDirectory: cwd, environment: baseEnv);
 
     if (command == null || command!.trim().isEmpty) {
       throw StateError(

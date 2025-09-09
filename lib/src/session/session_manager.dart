@@ -1,38 +1,30 @@
 import 'dart:async';
+
 import 'package:logging/logging.dart';
 
 import '../capabilities.dart';
 import '../config.dart';
+import '../models/terminal_events.dart';
 import '../models/types.dart';
 import '../models/updates.dart';
 import '../providers/permission_provider.dart';
 import '../providers/terminal_provider.dart';
 import '../rpc/peer.dart';
-import '../models/terminal_events.dart';
 
 typedef Json = Map<String, dynamic>;
 
 class InitializeResult {
-  final int protocolVersion;
-  final Map<String, dynamic>? agentCapabilities;
-  final List<Map<String, dynamic>>? authMethods;
   InitializeResult({
     required this.protocolVersion,
     required this.agentCapabilities,
     required this.authMethods,
   });
+  final int protocolVersion;
+  final Map<String, dynamic>? agentCapabilities;
+  final List<Map<String, dynamic>>? authMethods;
 }
 
 class SessionManager {
-  final AcpConfig config;
-  final JsonRpcPeer peer;
-  final Logger _log;
-
-  final Map<String, StreamController<AcpUpdate>> _sessionStreams = {};
-  final Set<String> _cancellingSessions = <String>{};
-  final StreamController<TerminalEvent> _terminalEvents =
-      StreamController<TerminalEvent>.broadcast();
-
   SessionManager({required this.config, required this.peer})
     : _log = config.logger {
     // Wire client-side handlers
@@ -47,11 +39,19 @@ class SessionManager {
 
     peer.sessionUpdates.listen(_routeSessionUpdate);
   }
+  final AcpConfig config;
+  final JsonRpcPeer peer;
+  final Logger _log;
+
+  final Map<String, StreamController<AcpUpdate>> _sessionStreams = {};
+  final Set<String> _cancellingSessions = <String>{};
+  final StreamController<TerminalEvent> _terminalEvents =
+      StreamController<TerminalEvent>.broadcast();
 
   Future<InitializeResult> initialize({
     AcpCapabilities? capabilitiesOverride,
   }) async {
-    final caps = (capabilitiesOverride ?? config.capabilities);
+    final caps = capabilitiesOverride ?? config.capabilities;
     final payload = {
       'protocolVersion': 1,
       if (caps.toJson().isNotEmpty) 'clientCapabilities': caps.toJson(),
@@ -72,10 +72,7 @@ class SessionManager {
     return resp['sessionId'] as String;
   }
 
-  Future<void> loadSession({
-    required String sessionId,
-    String? cwd,
-  }) async {
+  Future<void> loadSession({required String sessionId, String? cwd}) async {
     await peer.loadSession({
       'sessionId': sessionId,
       'cwd': cwd ?? config.workspaceRoot,
@@ -89,7 +86,7 @@ class SessionManager {
   }) {
     final controller = _sessionStreams.putIfAbsent(
       sessionId,
-      () => StreamController<AcpUpdate>.broadcast(),
+      StreamController<AcpUpdate>.broadcast,
     );
 
     () async {
@@ -127,7 +124,7 @@ class SessionManager {
   Stream<AcpUpdate> sessionUpdates(String sessionId) {
     final controller = _sessionStreams.putIfAbsent(
       sessionId,
-      () => StreamController<AcpUpdate>.broadcast(),
+      StreamController<AcpUpdate>.broadcast,
     );
     return controller.stream;
   }
@@ -138,7 +135,7 @@ class SessionManager {
     if (sessionId == null || update == null) return;
     final sink = _sessionStreams.putIfAbsent(
       sessionId,
-      () => StreamController<AcpUpdate>.broadcast(),
+      StreamController<AcpUpdate>.broadcast,
     );
 
     final kind = update['sessionUpdate'];
@@ -171,8 +168,8 @@ class SessionManager {
   // ===== Agent -> Client handlers =====
   Future<Json> _onReadTextFile(Json req) async {
     final path = req['path'] as String;
-    final int? line = (req['line'] as num?)?.toInt();
-    final int? limit = (req['limit'] as num?)?.toInt();
+    final line = (req['line'] as num?)?.toInt();
+    final limit = (req['limit'] as num?)?.toInt();
     final content = await config.fsProvider.readTextFile(
       path,
       line: line,
@@ -197,7 +194,7 @@ class SessionManager {
     }
     final options =
         (req['options'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-    final toolCall = (req['toolCall'] as Map<String, dynamic>?);
+    final toolCall = req['toolCall'] as Map<String, dynamic>?;
     final toolName = (toolCall?['title'] as String?) ?? 'operation';
     final toolKind = toolCall?['kind'] as String?;
     final outcome = await config.permissionProvider.request(
@@ -224,7 +221,7 @@ class SessionManager {
       chosenKind = 'reject_once';
     }
     // pick matching optionId
-    String? optionId =
+    var optionId =
         options.cast<Map<String, dynamic>?>().firstWhere(
               (o) => o != null && o['kind'] == chosenKind,
               orElse: () => null,
@@ -268,13 +265,15 @@ class SessionManager {
       env: env.isEmpty ? null : env,
     );
     _terminals[handle.terminalId] = handle;
-    _terminalEvents.add(TerminalCreated(
-      terminalId: handle.terminalId,
-      sessionId: sessionId,
-      command: cmd,
-      args: args,
-      cwd: cwd,
-    ));
+    _terminalEvents.add(
+      TerminalCreated(
+        terminalId: handle.terminalId,
+        sessionId: sessionId,
+        command: cmd,
+        args: args,
+        cwd: cwd,
+      ),
+    );
     return {'terminalId': handle.terminalId};
   }
 
@@ -297,12 +296,14 @@ class SessionManager {
     } on TimeoutException {
       exitCode = null;
     }
-    _terminalEvents.add(TerminalOutputEvent(
-      terminalId: termId,
-      output: output,
-      truncated: false,
-      exitCode: exitCode,
-    ));
+    _terminalEvents.add(
+      TerminalOutputEvent(
+        terminalId: termId,
+        output: output,
+        truncated: false,
+        exitCode: exitCode,
+      ),
+    );
     return {
       'output': output,
       'truncated': false,

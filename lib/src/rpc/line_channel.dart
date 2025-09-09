@@ -5,13 +5,6 @@ import 'package:stream_channel/stream_channel.dart';
 
 /// Wraps a process's stdio as a line-delimited JSON StreamChannel.
 class LineJsonChannel {
-  final Process process;
-  final StreamChannelController<String> _controller = StreamChannelController();
-  late final StreamSubscription _stdoutSub;
-  late final StreamSubscription _stderrSub;
-  final void Function(String line)? onInboundLine;
-  final void Function(String line)? onOutboundLine;
-
   LineJsonChannel(
     this.process, {
     void Function(String)? onStderr,
@@ -37,6 +30,12 @@ class LineJsonChannel {
       process.stdin.add([0x0A]);
     });
   }
+  final Process process;
+  final StreamChannelController<String> _controller = StreamChannelController();
+  late final StreamSubscription _stdoutSub;
+  late final StreamSubscription _stderrSub;
+  final void Function(String line)? onInboundLine;
+  final void Function(String line)? onOutboundLine;
 
   StreamChannel<String> get channel => _controller.foreign;
 

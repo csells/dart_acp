@@ -2,19 +2,14 @@ import 'dart:async';
 
 import 'capabilities.dart';
 import 'config.dart';
+import 'models/terminal_events.dart';
 import 'models/updates.dart';
 import 'rpc/peer.dart';
-import 'models/terminal_events.dart';
 import 'session/session_manager.dart';
 import 'transport/stdio_transport.dart';
 import 'transport/transport.dart';
 
 class AcpClient {
-  final AcpConfig config;
-  late final AcpTransport _transport;
-  JsonRpcPeer? _peer;
-  SessionManager? _sessionManager;
-
   AcpClient({required this.config}) {
     _transport = StdioTransport(
       cwd: config.workspaceRoot,
@@ -26,6 +21,10 @@ class AcpClient {
       onProtocolIn: config.onProtocolIn,
     );
   }
+  final AcpConfig config;
+  late final AcpTransport _transport;
+  JsonRpcPeer? _peer;
+  SessionManager? _sessionManager;
 
   Future<void> start() async {
     await _transport.start();
@@ -41,22 +40,19 @@ class AcpClient {
     AcpCapabilities? capabilitiesOverride,
   }) async {
     _ensureReady();
-    return await _sessionManager!.initialize(
+    return _sessionManager!.initialize(
       capabilitiesOverride: capabilitiesOverride,
     );
   }
 
   Future<String> newSession({String? cwd}) async {
     _ensureReady();
-    return await _sessionManager!.newSession(cwd: cwd);
+    return _sessionManager!.newSession(cwd: cwd);
   }
 
-  Future<void> loadSession({
-    required String sessionId,
-    String? cwd,
-  }) async {
+  Future<void> loadSession({required String sessionId, String? cwd}) async {
     _ensureReady();
-    return await _sessionManager!.loadSession(sessionId: sessionId, cwd: cwd);
+    return _sessionManager!.loadSession(sessionId: sessionId, cwd: cwd);
   }
 
   Stream<AcpUpdate> prompt({
@@ -74,7 +70,7 @@ class AcpClient {
 
   Future<void> cancel({required String sessionId}) async {
     _ensureReady();
-    return await _sessionManager!.cancel(sessionId: sessionId);
+    return _sessionManager!.cancel(sessionId: sessionId);
   }
 
   // Terminal events stream for UI

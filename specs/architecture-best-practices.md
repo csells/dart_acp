@@ -1,0 +1,11 @@
+# Architecture Best Practices
+- DRY (Don’t Repeat Yourself) – eliminate duplicated logic by extracting shared utilities and modules.
+- Separation of Concerns – each module should handle one distinct responsibility.
+- Single Responsibility Principle (SRP) – every class/module/function/file should have exactly one reason to change.
+- Clear Abstractions & Contracts – expose intent through small, stable interfaces and hide implementation details.
+- Low Coupling, High Cohesion – keep modules self-contained, minimize cross-dependencies.
+- Dependency Inversion & Interface-Driven Design – depend on abstractions, not concretions.
+- Scalability & Statelessness – design components to scale horizontally and prefer stateless services when possible.
+- Observability & Testability – build in logging, metrics, tracing, and ensure components can be unit/integration tested.
+- Security by Design – apply least privilege, secure defaults, and defense in depth.
+- KISS & YAGNI – keep solutions as simple as possible; avoid speculative complexity or over-engineering.

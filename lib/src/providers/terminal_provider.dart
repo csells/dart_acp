@@ -3,13 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 class TerminalProcessHandle {
-  final String terminalId;
-  final Process process;
-  final StreamSubscription<List<int>> _stdoutSub;
-  final StreamSubscription<List<int>> _stderrSub;
-  final StringBuffer _buffer = StringBuffer();
-  bool _released = false;
-
   TerminalProcessHandle({required this.terminalId, required this.process})
     : _stdoutSub = process.stdout.listen((data) {}),
       _stderrSub = process.stderr.listen((data) {}) {
@@ -17,12 +10,16 @@ class TerminalProcessHandle {
     _stdoutSub.onData((data) => _buffer.write(utf8.decode(data)));
     _stderrSub.onData((data) => _buffer.write(utf8.decode(data)));
   }
+  final String terminalId;
+  final Process process;
+  final StreamSubscription<List<int>> _stdoutSub;
+  final StreamSubscription<List<int>> _stderrSub;
+  final StringBuffer _buffer = StringBuffer();
+  bool _released = false;
 
   String currentOutput() => _buffer.toString();
 
-  Future<int> waitForExit() async {
-    return await process.exitCode;
-  }
+  Future<int> waitForExit() async => process.exitCode;
 
   Future<void> kill() async {
     process.kill(ProcessSignal.sigterm);
