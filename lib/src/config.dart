@@ -4,20 +4,28 @@ import 'providers/fs_provider.dart';
 import 'providers/permission_provider.dart';
 import 'providers/terminal_provider.dart';
 
+/// Collection of timeout knobs for ACP requests.
 class AcpTimeouts {
-  // host may set
-
+  /// Create timeouts; all optional.
   const AcpTimeouts({
     this.initialize = const Duration(seconds: 15),
     this.prompt,
     this.permission,
   });
+
+  /// Initialize call timeout.
   final Duration initialize;
-  final Duration? prompt; // no hard timeout by default
+
+  /// Optional prompt turn timeout (no hard timeout by default).
+  final Duration? prompt;
+
+  /// Optional permission prompt timeout.
   final Duration? permission;
 }
 
+/// Client configuration describing workspace, transport, providers, and caps.
 class AcpConfig {
+  /// Construct a configuration; call sites provide agent command/args/env.
   AcpConfig({
     required this.workspaceRoot,
     this.agentCommand,
@@ -42,24 +50,46 @@ class AcpConfig {
            ),
        permissionProvider =
            permissionProvider ?? const DefaultPermissionProvider();
-  final String workspaceRoot; // absolute path required
-  final String? agentCommand; // required for stdio transport; provided by host
+
+  /// Absolute path to the workspace root used for FS jail and session cwd.
+  final String workspaceRoot;
+
+  /// Agent executable name/path (for stdio transport).
+  final String? agentCommand;
+
+  /// Arguments passed to the agent executable.
   final List<String> agentArgs;
-  final Map<String, String> envOverrides; // additive only
+
+  /// Environment variable overlay for the agent process.
+  final Map<String, String> envOverrides;
+
+  /// Client capability advertisement.
   final AcpCapabilities capabilities;
-  // Global MCP servers (forwarded to session/new and session/load)
+
+  /// Global MCP servers forwarded to session/new and session/load.
   final List<Map<String, dynamic>> mcpServers;
-  // Allow reads outside workspace (yolo mode)
+
+  /// Whether reads may escape the workspace root (yolo mode).
   final bool allowReadOutsideWorkspace;
+
+  /// Request timeout configuration.
   final AcpTimeouts timeouts;
+
+  /// Logger used by the client and transport.
   final Logger logger;
-  // Optional taps for raw JSON-RPC frames (unprefixed JSONL). If provided,
-  // they are invoked for each frame sent/received by the transport.
+
+  /// Optional tap for raw outbound JSON-RPC frames (unprefixed JSONL).
   final void Function(String line)? onProtocolOut;
+
+  /// Optional tap for raw inbound JSON-RPC frames (unprefixed JSONL).
   final void Function(String line)? onProtocolIn;
 
-  // Providers
+  /// File system provider used to fulfill fs/* requests.
   final FsProvider fsProvider;
+
+  /// Permission provider used to answer session/request_permission.
   final PermissionProvider permissionProvider;
+
+  /// Optional terminal provider to allow terminal lifecycle methods.
   final TerminalProvider? terminalProvider;
 }

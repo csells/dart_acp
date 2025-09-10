@@ -65,10 +65,10 @@ class Settings {
 
   static Future<Settings> loadFromFile(String path) async {
     final file = File(path);
-    if (!await file.exists()) {
+    if (!file.existsSync()) {
       throw FileSystemException('settings.json not found', path);
     }
-    final text = await file.readAsString();
+    final text = file.readAsStringSync();
     final decoded = jsonDecode(text);
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('settings.json must be a JSON object');

@@ -4,7 +4,9 @@ import 'package:stream_channel/stream_channel.dart';
 import '../rpc/line_channel.dart';
 import '../transport/transport.dart';
 
+/// Stdio-based transport that spawns the agent process.
 class StdioTransport implements AcpTransport {
+  /// Create a stdio transport with working directory and logger.
   StdioTransport({
     required this.cwd,
     required this.logger,
@@ -14,12 +16,26 @@ class StdioTransport implements AcpTransport {
     this.onProtocolOut,
     this.onProtocolIn,
   });
+
+  /// Agent executable name/path.
   final String? command;
+
+  /// Arguments passed to the agent.
   final List<String> args;
+
+  /// Working directory for the agent process.
   final String cwd;
+
+  /// Environment variable overlay for the agent process.
   final Map<String, String> envOverrides;
+
+  /// Logger for diagnostics.
   final Logger logger;
+
+  /// Optional callback for outbound frames.
   final void Function(String line)? onProtocolOut;
+
+  /// Optional callback for inbound frames.
   final void Function(String line)? onProtocolIn;
 
   Process? _process;

@@ -11,20 +11,31 @@ import '../providers/permission_provider.dart';
 import '../providers/terminal_provider.dart';
 import '../rpc/peer.dart';
 
+/// Alias for a JSON map used in requests/responses.
 typedef Json = Map<String, dynamic>;
 
+/// Result returned by initialize containing negotiated protocol and caps.
 class InitializeResult {
+  /// Create an [InitializeResult].
   InitializeResult({
     required this.protocolVersion,
     required this.agentCapabilities,
     required this.authMethods,
   });
+
+  /// Negotiated protocol version.
   final int protocolVersion;
+
+  /// Agent capabilities (if provided).
   final Map<String, dynamic>? agentCapabilities;
+
+  /// Supported auth methods (if any).
   final List<Map<String, dynamic>>? authMethods;
 }
 
+/// Orchestrates ACP lifecycle and routes updates/tool/terminal handlers.
 class SessionManager {
+  /// Create a [SessionManager] with [config] and [peer].
   SessionManager({required this.config, required this.peer})
     : _log = config.logger {
     // Wire client-side handlers
@@ -39,7 +50,11 @@ class SessionManager {
 
     peer.sessionUpdates.listen(_routeSessionUpdate);
   }
+
+  /// Client configuration.
   final AcpConfig config;
+
+  /// JSON-RPC peer used for requests and client callbacks.
   final JsonRpcPeer peer;
   final Logger _log;
 
@@ -48,6 +63,16 @@ class SessionManager {
   final StreamController<TerminalEvent> _terminalEvents =
       StreamController<TerminalEvent>.broadcast();
 
+  /// Dispose all internal resources and close streams.
+  Future<void> dispose() async {
+    await _terminalEvents.close();
+    for (final c in _sessionStreams.values) {
+      await c.close();
+    }
+    _sessionStreams.clear();
+  }
+
+  /// Send `initialize` with capabilities and return negotiated result.
   Future<InitializeResult> initialize({
     AcpCapabilities? capabilitiesOverride,
   }) async {
@@ -64,15 +89,23 @@ class SessionManager {
     );
   }
 
+  /// Create a new session and return its id.
   Future<String> newSession({String? cwd}) async {
     final resp = await peer.newSession({
       'cwd': cwd ?? config.workspaceRoot,
       'mcpServers': config.mcpServers,
     });
-    return resp['sessionId'] as String;
+    final id = resp['sessionId'] as String;
+    _sessionStreams[id] = StreamController<AcpUpdate>.broadcast();
+    return id;
   }
 
+  /// Load a previous session and replay updates to the client.
   Future<void> loadSession({required String sessionId, String? cwd}) async {
+    _sessionStreams.putIfAbsent(
+      sessionId,
+      StreamController<AcpUpdate>.broadcast,
+    );
     await peer.loadSession({
       'sessionId': sessionId,
       'cwd': cwd ?? config.workspaceRoot,
@@ -80,16 +113,33 @@ class SessionManager {
     });
   }
 
+  /// Send a prompt and stream typed updates for this turn only.
+  /// The returned stream automatically closes after [TurnEnded].
   Stream<AcpUpdate> prompt({
     required String sessionId,
     required List<Map<String, dynamic>> content,
   }) {
-    final controller = _sessionStreams.putIfAbsent(
-      sessionId,
-      StreamController<AcpUpdate>.broadcast,
+    if (!_sessionStreams.containsKey(sessionId)) {
+      // Unknown session; ignore
+      return const Stream<AcpUpdate>.empty();
+    }
+
+    // Create a per-turn view that closes on TurnEnded.
+    final turn = StreamController<AcpUpdate>();
+    late final StreamSubscription sub;
+    sub = _sessionStreams[sessionId]!.stream.listen(
+      (u) {
+        turn.add(u);
+        if (u is TurnEnded) {
+          unawaited(sub.cancel());
+          unawaited(turn.close());
+        }
+      },
+      onError: (e, st) => turn.addError(e, st),
+      onDone: () => unawaited(turn.close()),
     );
 
-    () async {
+    unawaited(() async {
       try {
         final resp = await peer.prompt({
           'sessionId': sessionId,
@@ -98,45 +148,40 @@ class SessionManager {
         final stop = stopReasonFromWire(
           (resp['stopReason'] as String?) ?? 'other',
         );
-        controller.add(TurnEnded(stop));
+        _sessionStreams[sessionId]!.add(TurnEnded(stop));
         if (stop == StopReason.cancelled) {
           _cancellingSessions.remove(sessionId);
         }
-      } catch (e, st) {
+      } on Object catch (e, st) {
         _log.warning('prompt error: $e');
         // Surface error to listeners so UIs can react
-        controller.addError(e, st);
+        _sessionStreams[sessionId]!.addError(e, st);
       } finally {}
-    }();
+    }());
 
-    return controller.stream;
+    return turn.stream;
   }
 
+  /// Cancel the current turn for a session.
   Future<void> cancel({required String sessionId}) async {
     _cancellingSessions.add(sessionId);
     await peer.cancel({'sessionId': sessionId});
   }
 
+  /// Stream of terminal lifecycle events.
   Stream<TerminalEvent> get terminalEvents => _terminalEvents.stream;
 
   // Expose a persistent session updates stream (includes replay from
   // session/load and updates across multiple prompts)
-  Stream<AcpUpdate> sessionUpdates(String sessionId) {
-    final controller = _sessionStreams.putIfAbsent(
-      sessionId,
-      StreamController<AcpUpdate>.broadcast,
-    );
-    return controller.stream;
-  }
+  /// Persistent session update stream, including replay.
+  Stream<AcpUpdate> sessionUpdates(String sessionId) =>
+      _sessionStreams[sessionId]?.stream ?? const Stream<AcpUpdate>.empty();
 
   void _routeSessionUpdate(Json json) {
     final sessionId = json['sessionId'] as String?;
     final update = json['update'] as Map<String, dynamic>?;
     if (sessionId == null || update == null) return;
-    final sink = _sessionStreams.putIfAbsent(
-      sessionId,
-      StreamController<AcpUpdate>.broadcast,
-    );
+    if (!_sessionStreams.containsKey(sessionId)) return;
 
     final kind = update['sessionUpdate'];
     if (kind == 'available_commands_update') {
@@ -144,11 +189,11 @@ class SessionManager {
           (update['availableCommands'] as List?)
               ?.cast<Map<String, dynamic>>() ??
           const [];
-      sink.add(AvailableCommandsUpdate(cmds));
+      _sessionStreams[sessionId]!.add(AvailableCommandsUpdate(cmds));
     } else if (kind == 'plan') {
-      sink.add(PlanUpdate(update));
+      _sessionStreams[sessionId]!.add(PlanUpdate(update));
     } else if (kind == 'tool_call' || kind == 'tool_call_update') {
-      sink.add(ToolCallUpdate(update));
+      _sessionStreams[sessionId]!.add(ToolCallUpdate(update));
     } else if (kind == 'user_message_chunk' ||
         kind == 'agent_message_chunk' ||
         kind == 'agent_thought_chunk') {
@@ -157,11 +202,13 @@ class SessionManager {
           ? <Map<String, dynamic>>[content]
           : (content as List?)?.cast<Map<String, dynamic>>() ?? const [];
       final role = kind == 'user_message_chunk' ? 'user' : 'assistant';
-      sink.add(MessageDelta(role: role, content: blocks));
+      _sessionStreams[sessionId]!.add(
+        MessageDelta(role: role, content: blocks),
+      );
     } else if (kind == 'diff') {
-      sink.add(DiffUpdate(update));
+      _sessionStreams[sessionId]!.add(DiffUpdate(update));
     } else {
-      sink.add(UnknownUpdate(json));
+      _sessionStreams[sessionId]!.add(UnknownUpdate(json));
     }
   }
 
@@ -360,12 +407,14 @@ class SessionManager {
   }
 
   // UI helpers to interact with terminals
+  /// Read buffered output for a managed terminal.
   Future<String> readTerminalOutput(String terminalId) async {
     final handle = _terminals[terminalId];
     if (handle == null) return '';
     return handle.currentOutput();
   }
 
+  /// Kill a managed terminal process.
   Future<void> killTerminal(String terminalId) async {
     final provider = config.terminalProvider;
     final handle = _terminals[terminalId];
@@ -374,6 +423,7 @@ class SessionManager {
     }
   }
 
+  /// Wait for a terminal to exit and return its code, or null if unavailable.
   Future<int?> waitTerminal(String terminalId) async {
     final provider = config.terminalProvider;
     final handle = _terminals[terminalId];
@@ -384,6 +434,7 @@ class SessionManager {
     return null;
   }
 
+  /// Release resources for a managed terminal.
   Future<void> releaseTerminal(String terminalId) async {
     final provider = config.terminalProvider;
     final handle = _terminals.remove(terminalId);

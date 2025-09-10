@@ -9,12 +9,12 @@ environment:
 # Add regular dependencies here.
 dependencies:
   json_rpc_2: ^4.0.0
-  stream_channel: ^2.1.4
-  path: ^1.9.1
   logging: ^1.3.0
   mime: ^1.0.5
-  all_lint_rules_community: ^0.0.43
+  path: ^1.9.1
+  stream_channel: ^2.1.4
 
 dev_dependencies:
+  all_lint_rules_community: ^0.0.43
   lints: ^6.0.0
   test: ^1.25.6

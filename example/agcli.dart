@@ -79,7 +79,10 @@ Future<void> main(List<String> argv) async {
         onRequest: (opts) async {
           // Simple CLI prompt. Auto-allow in non-interactive environments.
           if (!stdin.hasTerminal) {
-            stdout.writeln('[permission] auto-allow ${opts.toolName}');
+            // In JSONL mode, suppress human-readable prints entirely.
+            if (!args.output.isJsonLike) {
+              stdout.writeln('[permission] auto-allow ${opts.toolName}');
+            }
             return PermissionOutcome.allow;
           }
           stdout.writeln(
@@ -121,10 +124,13 @@ Future<void> main(List<String> argv) async {
   final sigintSub = ProcessSignal.sigint.watch().listen((_) {
     final sid = _sessionId;
     if (sid != null) {
-      // Fire-and-forget; server may not respond to cancel.
-      unawaited(client.cancel(sessionId: sid));
+      // Fire-and-forget: send cancel, then exit
+      unawaited(
+        client.cancel(sessionId: sid).whenComplete(() => exit(130)),
+      ); // 128+SIGINT
+      return;
     }
-    exit(130); // 128+SIGINT
+    exit(130);
   });
 
   await client.start();
@@ -223,6 +229,7 @@ Future<String?> _readPrompt(_Args args) async {
 String? _sessionId;
 
 class _Args {
+  // Unnamed constructor first (lint: sort_unnamed_constructors_first)
   _Args({
     required this.output,
     required this.help,
@@ -233,16 +240,8 @@ class _Args {
     this.saveSessionPath,
     this.prompt,
   });
-  final String? agentName;
-  final OutputMode output;
-  final bool help;
-  final bool yolo;
-  final bool write;
-  final String? resumeSessionId;
-  final String? saveSessionPath;
-  final String? prompt;
 
-  static _Args parse(List<String> argv) {
+  factory _Args.parse(List<String> argv) {
     String? agent;
     var output = OutputMode.text;
     var help = false;
@@ -313,6 +312,15 @@ class _Args {
       prompt: prompt,
     );
   }
+
+  final String? agentName;
+  final OutputMode output;
+  final bool help;
+  final bool yolo;
+  final bool write;
+  final String? resumeSessionId;
+  final String? saveSessionPath;
+  final String? prompt;
 }
 
 enum OutputMode { text, simple, jsonl }
@@ -340,26 +348,26 @@ void _printUsage() {
   stdout.writeln(
     '  -a, --agent <name>     Select agent from settings.json next to this CLI',
   );
-  stdout.writeln(
-    '  -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)',
-  );
-  stdout.writeln(
-    '      --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)',
-  );
+  stdout.writeln('  -o, --output <mode>    Output mode:');
+  stdout.writeln('                         jsonl|json|text|simple');
+  stdout.writeln('                         (default: text)');
+  stdout.writeln('      --yolo             Enable read-everywhere and');
+  stdout.writeln('                         write-enabled (writes still');
+  stdout.writeln('                         confined to CWD)');
   stdout.writeln(
     '      --write            Enable write capability (still confined to CWD)',
   );
-  stdout.writeln(
-    '      --resume <id>      Resume an existing session (replay), then send the prompt',
-  );
+  stdout.writeln('      --resume <id>      Resume an existing');
+  stdout.writeln('                         session (replay), then send');
+  stdout.writeln('                         the prompt');
   stdout.writeln('      --save-session <p> Save new sessionId to file');
   stdout.writeln('  -h, --help             Show this help and exit');
   stdout.writeln('');
   stdout.writeln('Prompt:');
   stdout.writeln('  Provide as a positional argument, or pipe via stdin.');
-  stdout.writeln(
-    '  Use @-mentions to add context: @path, @"a file.txt", @https://example.com/file',
-  );
+  stdout.writeln('  Use @-mentions to add context:');
+  stdout.writeln('    @path, @"a file.txt",');
+  stdout.writeln('    @https://example.com/file');
   stdout.writeln('');
   stdout.writeln('Examples:');
   stdout.writeln('  dart example/agcli.dart -a my-agent "Summarize README.md"');
@@ -416,7 +424,7 @@ Uri? _toUri(String token, {required String cwd}) {
   if (token.startsWith('http://') || token.startsWith('https://')) {
     try {
       return Uri.parse(token);
-    } catch (_) {
+    } on FormatException catch (_) {
       stderr.writeln('Warning: invalid URL mention: @$token');
       return null;
     }

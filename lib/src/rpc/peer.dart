@@ -2,16 +2,23 @@ import 'dart:async';
 import 'package:json_rpc_2/json_rpc_2.dart' as rpc;
 import 'package:stream_channel/stream_channel.dart';
 
+/// Alias for a JSON map used in requests/responses.
 typedef Json = Map<String, dynamic>;
 
+/// Thin wrapper around json_rpc_2.Peer with client handler hooks.
 class JsonRpcPeer {
+  /// Construct a peer bound to a [channel].
   JsonRpcPeer(StreamChannel<String> channel) : _peer = rpc.Peer(channel) {
     _registerClientHandlers();
-    _peer.listen();
+    // Start listening for messages; fire-and-forget intentionally.
+    unawaited(_peer.listen());
   }
+
+  /// Underlying JSON-RPC peer.
   final rpc.Peer _peer;
   final StreamController<Json> _sessionUpdates = StreamController.broadcast();
 
+  /// Stream of raw `session/update` notifications.
   Stream<Json> get sessionUpdates => _sessionUpdates.stream;
 
   void _registerClientHandlers() {
@@ -84,30 +91,49 @@ class JsonRpcPeer {
     });
   }
 
-  // Client handlers (Agent -> Client callbacks)
+  /// Client handlers (Agent -> Client callbacks)
+  /// Handler invoked when agent requests `fs/read_text_file`.
   Future<dynamic> Function(Json)? onReadTextFile;
+
+  /// Handler invoked when agent requests `fs/write_text_file`.
   Future<dynamic> Function(Json)? onWriteTextFile;
+
+  /// Handler invoked when agent requests `session/request_permission`.
   Future<dynamic> Function(Json)? onRequestPermission;
+
+  /// Handler invoked when agent requests `terminal/create`.
   Future<dynamic> Function(Json)? onTerminalCreate;
+
+  /// Handler invoked when agent requests `terminal/output`.
   Future<dynamic> Function(Json)? onTerminalOutput;
+
+  /// Handler invoked when agent requests `terminal/wait_for_exit`.
   Future<dynamic> Function(Json)? onTerminalWaitForExit;
+
+  /// Handler invoked when agent requests `terminal/kill`.
   Future<dynamic> Function(Json)? onTerminalKill;
+
+  /// Handler invoked when agent requests `terminal/release`.
   Future<dynamic> Function(Json)? onTerminalRelease;
 
-  // Client -> Agent requests
+  /// Send `initialize` and return the JSON payload.
   Future<Json> initialize(Json params) async =>
       Map<String, dynamic>.from(await _peer.sendRequest('initialize', params));
 
+  /// Send `session/new` and return the JSON payload.
   Future<Json> newSession(Json params) async =>
       Map<String, dynamic>.from(await _peer.sendRequest('session/new', params));
 
+  /// Send `session/load` for replay.
   Future<void> loadSession(Json params) async =>
       _peer.sendRequest('session/load', params);
 
+  /// Send `session/prompt` and return the terminal result payload.
   Future<Json> prompt(Json params) async => Map<String, dynamic>.from(
     await _peer.sendRequest('session/prompt', params),
   );
 
+  /// Send `session/cancel` as a notification.
   Future<void> cancel(Json params) async =>
       _peer.sendNotification('session/cancel', params);
 }

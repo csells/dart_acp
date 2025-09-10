@@ -9,7 +9,10 @@ import 'session/session_manager.dart';
 import 'transport/stdio_transport.dart';
 import 'transport/transport.dart';
 
+/// High-level ACP client that manages transport, session lifecycle,
+/// and streams updates from the agent.
 class AcpClient {
+  /// Create a client with the given configuration.
   AcpClient({required this.config}) {
     _transport = StdioTransport(
       cwd: config.workspaceRoot,
@@ -21,21 +24,29 @@ class AcpClient {
       onProtocolIn: config.onProtocolIn,
     );
   }
+
+  /// Client configuration.
   final AcpConfig config;
   late final AcpTransport _transport;
   JsonRpcPeer? _peer;
   SessionManager? _sessionManager;
 
+  /// Start the underlying transport and wire JSON-RPC peer.
   Future<void> start() async {
     await _transport.start();
     _peer = JsonRpcPeer(_transport.channel);
     _sessionManager = SessionManager(config: config, peer: _peer!);
   }
 
+  /// Dispose the transport and release resources.
   Future<void> dispose() async {
+    if (_sessionManager != null) {
+      await _sessionManager!.dispose();
+    }
     await _transport.stop();
   }
 
+  /// Send `initialize` to negotiate protocol and capabilities.
   Future<InitializeResult> initialize({
     AcpCapabilities? capabilitiesOverride,
   }) async {
@@ -45,16 +56,19 @@ class AcpClient {
     );
   }
 
+  /// Create a new ACP session; returns the session id.
   Future<String> newSession({String? cwd}) async {
     _ensureReady();
     return _sessionManager!.newSession(cwd: cwd);
   }
 
+  /// Load an existing session (if the agent supports it).
   Future<void> loadSession({required String sessionId, String? cwd}) async {
     _ensureReady();
     return _sessionManager!.loadSession(sessionId: sessionId, cwd: cwd);
   }
 
+  /// Send a prompt to the agent and stream `AcpUpdate`s.
   Stream<AcpUpdate> prompt({
     required String sessionId,
     required List<Map<String, dynamic>> content,
@@ -63,38 +77,43 @@ class AcpClient {
     return _sessionManager!.prompt(sessionId: sessionId, content: content);
   }
 
+  /// Subscribe to the persistent session updates stream (includes replay).
   Stream<AcpUpdate> sessionUpdates(String sessionId) {
     _ensureReady();
     return _sessionManager!.sessionUpdates(sessionId);
   }
 
+  /// Cancel the current turn for the given session.
   Future<void> cancel({required String sessionId}) async {
     _ensureReady();
     return _sessionManager!.cancel(sessionId: sessionId);
   }
 
-  // Terminal events stream for UI
+  /// Terminal events stream for UI.
   Stream<TerminalEvent> get terminalEvents {
     _ensureReady();
     return _sessionManager!.terminalEvents;
   }
 
-  // Terminal controls (UI helpers)
+  /// Read current buffered output for a managed terminal.
   Future<String> terminalOutput(String terminalId) async {
     _ensureReady();
     return _sessionManager!.readTerminalOutput(terminalId);
   }
 
+  /// Kill a managed terminal process.
   Future<void> terminalKill(String terminalId) async {
     _ensureReady();
     await _sessionManager!.killTerminal(terminalId);
   }
 
+  /// Wait for a managed terminal process to exit.
   Future<int?> terminalWaitForExit(String terminalId) async {
     _ensureReady();
     return _sessionManager!.waitTerminal(terminalId);
   }
 
+  /// Release resources for a managed terminal.
   Future<void> terminalRelease(String terminalId) async {
     _ensureReady();
     await _sessionManager!.releaseTerminal(terminalId);
@@ -106,7 +125,7 @@ class AcpClient {
     }
   }
 
-  // Convenience helper to build a text content block
+  /// Convenience helper to build a text content block.
   static Map<String, dynamic> text(String text) => {
     'type': 'text',
     'text': text,

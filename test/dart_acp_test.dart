@@ -53,29 +53,27 @@ void main() {
     tearDown(() async {
       try {
         await ws.delete(recursive: true);
-      } catch (_) {}
+      } on Object catch (_) {}
       try {
         await outside.delete(recursive: true);
-      } catch (_) {}
+      } on Object catch (_) {}
     });
 
-    test(
-      'read: relative path resolves within workspace; outside denied by default',
-      () async {
-        File(p.join(ws.path, 'a.txt')).writeAsStringSync('hi');
-        final outsideFile = File(p.join(outside.path, 'b.txt'))
-          ..writeAsStringSync('there');
+    test('read: relative path resolves within workspace; '
+        'outside denied by default', () async {
+      File(p.join(ws.path, 'a.txt')).writeAsStringSync('hi');
+      final outsideFile = File(p.join(outside.path, 'b.txt'))
+        ..writeAsStringSync('there');
 
-        final fs = DefaultFsProvider(workspaceRoot: ws.path);
-        final content = await fs.readTextFile('a.txt');
-        expect(content, 'hi');
+      final fs = DefaultFsProvider(workspaceRoot: ws.path);
+      final content = await fs.readTextFile('a.txt');
+      expect(content, 'hi');
 
-        expect(
-          () => fs.readTextFile(outsideFile.path),
-          throwsA(isA<FileSystemException>()),
-        );
-      },
-    );
+      expect(
+        () => fs.readTextFile(outsideFile.path),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
 
     test(
       'read: allowReadOutsideWorkspace=true permits outside reads',
