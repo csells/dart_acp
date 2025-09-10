@@ -1,8 +1,6 @@
 export 'src/acp_client.dart';
 export 'src/capabilities.dart';
 export 'src/config.dart';
-export 'src/metrics/metrics_collector.dart';
-export 'src/metrics/session_metrics.dart';
 export 'src/models/terminal_events.dart';
 export 'src/models/types.dart';
 export 'src/models/updates.dart';
