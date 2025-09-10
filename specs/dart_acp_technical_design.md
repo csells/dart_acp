@@ -240,7 +240,12 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
 
 - **CLI flags**:  
   - `--agent <name>` (`-a <name>`): selects an agent by key from `agent_servers`.  
-  - `--jsonl` (`-j`): mirrors protocol frames (JSONL) to `stdout` exactly as sent/received; suppresses plain‑text output (see Logging).
+  - `--output <mode>` (`-o`): `jsonl|json|text|simple` (json is an alias for jsonl).  
+  - `--list-commands`: print available slash commands (AvailableCommand[]) without sending a prompt; waits for `available_commands_update`.  
+  - `--yolo`: enables read‑everywhere and write capability (writes still confined to CWD).  
+  - `--write`: enables write capability (still confined to CWD).  
+  - `--resume <id>` / `--save-session <path>`: session resume helpers.  
+  - `--help` (`-h`): prints usage.
 
 - **Selection rules**:  
   1) If `--agent` is provided, use that agent key.  
@@ -416,6 +421,27 @@ Example:
   - Note: no explicit "Turn ended" line is printed.
 - `-o simple`: only the assistant’s streaming text chunks.
 - `-o jsonl|json`: raw JSON‑RPC frames (JSON Lines) for both directions. Stderr is used for errors/diagnostics only.
+
+### 17.7 Triggering Behaviors (Prompts)
+
+The CLI is prompt‑first: it doesn’t synthesize protocol frames beyond `--list-commands`. Use prompts that elicit the desired ACP updates:
+
+- Commands:
+  - `--list-commands` with no prompt does not send a prompt; it waits for and surfaces `available_commands_update`.
+  - Or: “List your available commands and briefly describe each one. Do not execute anything until further instruction.”
+  - Expect `session/update` with `sessionUpdate=available_commands_update`.
+
+- Plans:
+  - “Before doing anything, produce a 3‑step plan to add a ‘Testing’ section to README.md. Stream plan updates for each step as you go. Stop after presenting the plan; do not apply changes yet.”
+  - Expect `session/update` containing `plan`.
+
+- Diffs:
+  - “Propose changes to README.md adding a ‘How to Test’ section. Do not apply changes; send only a diff.”
+  - Expect `session/update` with `sessionUpdate=diff`.
+
+- File I/O sanity:
+  - “Read README.md and summarize in one paragraph.”
+  - Expect `tool_call`/`tool_call_update` frames.
 
 ### 17.6 Exit Codes
 

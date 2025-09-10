@@ -29,6 +29,8 @@ class LineJsonChannel {
       onOutboundLine?.call(out);
       process.stdin.add(utf8.encode(out));
       process.stdin.add([0x0A]);
+      // Flush to ensure immediate delivery
+      unawaited(process.stdin.flush());
     });
   }
 

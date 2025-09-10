@@ -39,6 +39,7 @@ Options:
   -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)
       --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)
       --write            Enable write capability (still confined to CWD)
+      --list-commands    Print available slash commands (ACP AvailableCommand) without sending a prompt
       --resume <id>      Resume an existing session (replay), then send the prompt
       --save-session <p> Save new sessionId to file
   -h, --help             Show this help and exit
@@ -115,11 +116,11 @@ Examples:
   - ACP: enable with `--experimental-acp` (the example `settings.json` uses this flag).
 
 - Claude Code ACP Adapter:
-  - Option A (Node/npm adapter published by Xuanwo): https://github.com/Xuanwo/acp-claude-code
-    - Run via `npx acp-claude-code` (our default in `example/settings.json`) or install globally `npm i -g acp-claude-code` and invoke `acp-claude-code`.
-    - Authenticate per the adapter/Claude Code instructions (OAuth-style login supported).
-  - Option B (Zed’s SDK adapter): https://github.com/zed-industries/claude-code-acp
-    - Use if you prefer Zed’s version; configure the command accordingly.
+  - Recommended (Zed's SDK adapter): https://github.com/zed-industries/claude-code-acp
+    - Run via `npx @zed-industries/claude-code-acp` (our default in `example/settings.json`)
+    - Or install globally: `npm i -g @zed-industries/claude-code-acp` and invoke `claude-code-acp`
+    - Authenticate per the adapter/Claude Code instructions (OAuth-style login supported)
+    - This version properly sends available_commands_update after session creation
 
 #### Usage examples
 
@@ -205,3 +206,38 @@ final client = AcpClient(
 );
 ```
 ```
+### Triggering Behaviors
+
+Use prompts that encourage the agent to emit specific ACP updates. The CLI is prompt‑first and simply passes your text; frames stream back as‑is in JSONL.
+
+- Slash commands: `--list-commands` (with no prompt) prints the agent's available slash commands without sending a prompt.
+  - If needed, you can also ask explicitly in a prompt, but the CLI does not do so for `--list-commands`.
+  - In JSONL, assert a `session/update` with `"sessionUpdate":"available_commands_update"`.
+  - In text mode, look for `[commands] …`.
+
+- Plans: ask for a multi‑step plan and to stop before applying:
+  - Before doing anything, produce a 3‑step plan to add a "Testing" section to README.md. Stream plan updates for each step as you go. Stop after presenting the plan; do not apply changes yet.
+  - In JSONL, look for `session/update` containing `"plan"`.
+  - In text mode, the CLI prints `[plan] …` on each update.
+
+- Diffs: request a diff‑only proposal without applying:
+  - Propose changes to README.md adding a "How to Test" section. Do not apply changes; send only a diff.
+  - In JSONL, look for a `session/update` with `"sessionUpdate":"diff"`.
+  - In text mode, look for `[diff] …`.
+
+- File I/O sanity: encourage read tool calls:
+  - Read README.md and summarize in one paragraph.
+  - In JSONL, expect `tool_call`/`tool_call_update` frames.
+
+Notes:
+- JSONL mode mirrors raw JSON‑RPC frames on stdout only; no human text. Permission logs are suppressed.
+- Emission depends on the agent/model; prompts above are tuned for Gemini and Claude Code.
+
+### How to Test
+
+This project uses the `test` package. To run the tests, use the `dart test` command:
+
+```bash
+dart test
+```
+

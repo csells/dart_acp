@@ -111,9 +111,11 @@ Future<void> main(List<String> argv) async {
     ),
   );
 
-  // Prepare prompt
+  // Prepare prompt and decide if we're in list-only mode.
   final prompt = await _readPrompt(args);
-  if (prompt == null || prompt.trim().isEmpty) {
+  final listOnly = args.listCommands &&
+      (prompt == null || prompt.trim().isEmpty);
+  if (!listOnly && (prompt == null || prompt.trim().isEmpty)) {
     stderr.writeln('Error: empty prompt');
     stderr.writeln('Tip: run with --help for usage.');
     exitCode = 2;
@@ -166,44 +168,77 @@ Future<void> main(List<String> argv) async {
     });
   }
 
-  final content = _buildContentBlocks(prompt, cwd: cwd);
+  // Subscribe to persistent session updates early so we don't miss
+  // pre-prompt updates like available_commands_update.
+  StreamSubscription<AcpUpdate>? sessionSub;
+  final updatesStream =
+      client.sessionUpdates(_sessionId!).asBroadcastStream();
+  if (args.output == OutputMode.text) {
+    sessionSub = updatesStream.listen((u) {
+      if (u is AvailableCommandsUpdate) {
+        final cmds = u.commands;
+        if (cmds.isNotEmpty) {
+          for (final c in cmds) {
+            final name = (c['name'] ?? c['title'] ?? '').toString();
+            final desc = (c['description'] ?? '').toString();
+            if (name.isEmpty) continue;
+            if (desc.isEmpty) {
+              stdout.writeln('/$name');
+            } else {
+              stdout.writeln('/$name - $desc');
+            }
+          }
+        }
+      } else if (!listOnly) {
+        if (u is PlanUpdate) {
+          stdout.writeln('[plan] ${jsonEncode(u.plan)}');
+        } else if (u is ToolCallUpdate) {
+          stdout.writeln('[tool] ${jsonEncode(u.toolCall)}');
+        } else if (u is DiffUpdate) {
+          stdout.writeln('[diff] ${jsonEncode(u.diff)}');
+        }
+      }
+    });
+  }
+
+  // In list-only mode, do not send a prompt. Wait briefly for an
+  // available_commands_update and then exit. If none arrives, print an empty
+  // list in text mode.
+  if (listOnly) {
+    final settle = Completer<void>();
+    late final StreamSubscription<AcpUpdate> onceSub;
+    onceSub = updatesStream.listen((u) {
+      if (!settle.isCompleted && u is AvailableCommandsUpdate) {
+        settle.complete();
+        unawaited(onceSub.cancel());
+      }
+    });
+    // Wait for command discovery; keep this modest so agents like Gemini
+    // return quickly (empty), while Claude Code has time to publish.
+    try {
+      await settle.future.timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      // No command update observed; don't print anything
+    }
+    await sigintSub.cancel();
+    await sessionSub?.cancel();
+    await client.dispose();
+    exit(0);
+  }
+
+  final content = _buildContentBlocks(prompt!, cwd: cwd);
   final updates = client.prompt(sessionId: _sessionId!, content: content);
 
   // In JSONL mode, do not print plain text; only JSONL is emitted to stdout
-  // via protocol taps. In plain mode, stream assistant text chunks to stdout.
-  // No buffer needed; we either stream plain text (default) or emit JSONL only.
+  // via protocol taps. In text/simple, stream assistant text chunks to stdout.
   await for (final u in updates) {
     if (u is MessageDelta) {
-      if (args.output.isJsonLike || args.output == OutputMode.simple) {
-        // suppress human prints
-      } else {
+      if (!args.output.isJsonLike) {
         final texts = u.content
             .where((b) => b['type'] == 'text')
             .map((b) => b['text'] as String)
             .join();
         if (texts.isNotEmpty) stdout.writeln(texts);
-      }
-    } else if (u is PlanUpdate) {
-      if (args.output == OutputMode.text) {
-        stdout.writeln('[plan] ${jsonEncode(u.plan)}');
-      }
-    } else if (u is ToolCallUpdate) {
-      if (args.output == OutputMode.text) {
-        stdout.writeln('[tool] ${jsonEncode(u.toolCall)}');
-      }
-    } else if (u is DiffUpdate) {
-      if (args.output == OutputMode.text) {
-        stdout.writeln('[diff] ${jsonEncode(u.diff)}');
-      }
-    } else if (u is AvailableCommandsUpdate) {
-      if (args.output == OutputMode.text) {
-        final names = u.commands
-            .map((c) => (c['name'] ?? c['title'] ?? '').toString())
-            .where((s) => s.isNotEmpty)
-            .join(', ');
-        stdout.writeln(
-          '[commands] ${names.isEmpty ? jsonEncode(u.commands) : names}',
-        );
       }
     } else if (u is TurnEnded) {
       // In text/simple, do not print a 'Turn ended' line per request.
@@ -212,6 +247,10 @@ Future<void> main(List<String> argv) async {
   }
 
   await sigintSub.cancel();
+  // Clean up session update subscription
+  if (sessionSub != null) {
+    await sessionSub.cancel();
+  }
   await client.dispose();
   // Normal completion
   exit(0);
@@ -236,6 +275,7 @@ class _Args {
     this.agentName,
     this.yolo = false,
     this.write = false,
+    this.listCommands = false,
     this.resumeSessionId,
     this.saveSessionPath,
     this.prompt,
@@ -247,6 +287,7 @@ class _Args {
     var help = false;
     var yolo = false;
     var write = false;
+    var listCommands = false;
     String? resume;
     String? savePath;
     final rest = <String>[];
@@ -273,6 +314,8 @@ class _Args {
         yolo = true;
       } else if (a == '--write') {
         write = true;
+      } else if (a == '--list-commands') {
+        listCommands = true;
       } else if (a == '--resume') {
         if (i + 1 >= argv.length) {
           stderr.writeln('Error: --resume requires a sessionId');
@@ -307,6 +350,7 @@ class _Args {
       help: help,
       yolo: yolo,
       write: write,
+      listCommands: listCommands,
       resumeSessionId: resume,
       saveSessionPath: savePath,
       prompt: prompt,
@@ -318,6 +362,7 @@ class _Args {
   final bool help;
   final bool yolo;
   final bool write;
+  final bool listCommands;
   final String? resumeSessionId;
   final String? saveSessionPath;
   final String? prompt;
@@ -357,6 +402,8 @@ void _printUsage() {
   stdout.writeln(
     '      --write            Enable write capability (still confined to CWD)',
   );
+  stdout.writeln('      --list-commands    Print available slash commands');
+  stdout.writeln('                         (no prompt sent)');
   stdout.writeln('      --resume <id>      Resume an existing');
   stdout.writeln('                         session (replay), then send');
   stdout.writeln('                         the prompt');

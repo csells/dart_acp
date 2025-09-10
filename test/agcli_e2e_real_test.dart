@@ -5,6 +5,73 @@ import 'package:test/test.dart';
 
 void main() {
   group('agcli e2e real adapters', () {
+    test('gemini: list commands (jsonl) — may be empty', () async {
+      final proc = await Process.start('dart', [
+        'example/agcli.dart',
+        '-a',
+        'gemini',
+        '-o',
+        'jsonl',
+        '--list-commands',
+      ]);
+      await proc.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .toList();
+      final code = await proc.exitCode.timeout(const Duration(minutes: 2));
+      final stderrText = await proc.stderr.transform(utf8.decoder).join();
+      expect(code, 0, reason: 'list-commands run failed. stderr= $stderrText');
+      // Gemini may not emit available_commands_update; accept absence.
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test('gemini: list commands (text mode)', () async {
+      final proc = await Process.start('dart', [
+        'example/agcli.dart',
+        '-a',
+        'gemini',
+        '--list-commands',
+      ]);
+      final out = await proc.stdout.transform(utf8.decoder).join();
+      final code = await proc.exitCode.timeout(const Duration(minutes: 2));
+      expect(code, 0);
+      // Gemini returns no commands, so output should be empty
+      expect(out.trim(), isEmpty, 
+        reason: 'Expected empty output for no commands');
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test(
+      'claude-code: list commands (jsonl)',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/agcli.dart',
+          '-a',
+          'claude-code',
+          '-o',
+          'jsonl',
+          '--list-commands',
+        ]);
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final code = await proc.exitCode.timeout(const Duration(minutes: 3));
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        expect(
+          code,
+          0,
+          reason: 'list-commands run failed. stderr= $stderrText',
+        );
+        final hasAvail = lines.any(
+          (l) => l.contains('"sessionUpdate":"available_commands_update"'),
+        );
+        expect(
+          hasAvail,
+          isTrue,
+          reason: 'No available_commands_update observed',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
     test('gemini: output text mode', () async {
       final proc = await Process.start('dart', [
         'example/agcli.dart',
@@ -397,6 +464,120 @@ void main() {
         }
       },
       timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'plans: text rendering and jsonl frames',
+      () async {
+        // JSONL assertion first (gemini)
+        const planPrompt =
+            'Before doing anything, produce a 3-step plan to add a '
+            '"Testing" section to README.md. '
+            'Stream plan updates for each step as you go. '
+            'Stop after presenting the plan; do not apply changes yet.';
+        var proc = await Process.start('dart', [
+          'example/agcli.dart',
+          '-a',
+          'gemini',
+          '-o',
+          'jsonl',
+          planPrompt,
+        ]);
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        var code = await proc.exitCode.timeout(const Duration(minutes: 2));
+        expect(code, 0);
+        final hasPlanFrame = lines.any(
+          (l) =>
+              l.contains('"method":"session/update"') && l.contains('"plan"'),
+        );
+        expect(hasPlanFrame, isTrue, reason: 'No plan session/update observed');
+
+        // Text rendering check (claude-code)
+        proc = await Process.start('dart', [
+          'example/agcli.dart',
+          '-a',
+          'claude-code',
+          planPrompt,
+        ]);
+        final outText = await proc.stdout.transform(utf8.decoder).join();
+        code = await proc.exitCode.timeout(const Duration(minutes: 3));
+        expect(code, 0);
+        expect(outText.contains('[plan]'), isTrue);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'diffs: text rendering and jsonl frames',
+      () async {
+        // JSONL assertion (claude-code)
+        const diffPrompt =
+            'Propose changes to README.md adding a "How to Test" section. '
+            'Do not apply changes; send only a diff.';
+        var proc = await Process.start('dart', [
+          'example/agcli.dart',
+          '-a',
+          'claude-code',
+          '-o',
+          'jsonl',
+          diffPrompt,
+        ]);
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        var code = await proc.exitCode.timeout(const Duration(minutes: 3));
+        expect(code, 0);
+        final hasDiffFrame = lines.any(
+          (l) =>
+              l.contains('"method":"session/update"') && l.contains('"diff"'),
+        );
+        expect(hasDiffFrame, isTrue, reason: 'No diff session/update observed');
+
+        // Text rendering check (gemini)
+        proc = await Process.start('dart', [
+          'example/agcli.dart',
+          '-a',
+          'gemini',
+          diffPrompt,
+        ]);
+        final outText = await proc.stdout.transform(utf8.decoder).join();
+        code = await proc.exitCode.timeout(const Duration(minutes: 2));
+        expect(code, 0);
+        expect(outText.contains('[diff]'), isTrue);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'file I/O: tool calls appear in jsonl',
+      () async {
+        // Ask to read a file to encourage fs/read_text_file
+        final proc = await Process.start('dart', [
+          'example/agcli.dart',
+          '-a',
+          'gemini',
+          '-o',
+          'jsonl',
+          'Read README.md and summarize in one paragraph.',
+        ]);
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final code = await proc.exitCode.timeout(const Duration(minutes: 2));
+        expect(code, 0);
+        final sawTool = lines.any(
+          (l) =>
+              l.contains('"sessionUpdate":"tool_call"') ||
+              l.contains('"sessionUpdate":"tool_call_update"'),
+        );
+        expect(sawTool, isTrue, reason: 'No tool_call frames observed');
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
     );
   });
 }

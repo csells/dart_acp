@@ -59,6 +59,7 @@ class SessionManager {
   final Logger _log;
 
   final Map<String, StreamController<AcpUpdate>> _sessionStreams = {};
+  final Map<String, List<AcpUpdate>> _replayBuffers = {};
   final Set<String> _cancellingSessions = <String>{};
   final StreamController<TerminalEvent> _terminalEvents =
       StreamController<TerminalEvent>.broadcast();
@@ -70,6 +71,7 @@ class SessionManager {
       await c.close();
     }
     _sessionStreams.clear();
+    _replayBuffers.clear();
   }
 
   /// Send `initialize` with capabilities and return negotiated result.
@@ -96,7 +98,8 @@ class SessionManager {
       'mcpServers': config.mcpServers,
     });
     final id = resp['sessionId'] as String;
-    _sessionStreams[id] = StreamController<AcpUpdate>.broadcast();
+    _sessionStreams.putIfAbsent(id, StreamController<AcpUpdate>.broadcast);
+    _replayBuffers.putIfAbsent(id, () => <AcpUpdate>[]);
     return id;
   }
 
@@ -106,6 +109,7 @@ class SessionManager {
       sessionId,
       StreamController<AcpUpdate>.broadcast,
     );
+    _replayBuffers.putIfAbsent(sessionId, () => <AcpUpdate>[]);
     await peer.loadSession({
       'sessionId': sessionId,
       'cwd': cwd ?? config.workspaceRoot,
@@ -123,21 +127,6 @@ class SessionManager {
       // Unknown session; ignore
       return const Stream<AcpUpdate>.empty();
     }
-
-    // Create a per-turn view that closes on TurnEnded.
-    final turn = StreamController<AcpUpdate>();
-    late final StreamSubscription sub;
-    sub = _sessionStreams[sessionId]!.stream.listen(
-      (u) {
-        turn.add(u);
-        if (u is TurnEnded) {
-          unawaited(sub.cancel());
-          unawaited(turn.close());
-        }
-      },
-      onError: (e, st) => turn.addError(e, st),
-      onDone: () => unawaited(turn.close()),
-    );
 
     unawaited(() async {
       try {
@@ -159,7 +148,21 @@ class SessionManager {
       } finally {}
     }());
 
-    return turn.stream;
+    final base = _sessionStreams[sessionId]!.stream;
+    return Stream<AcpUpdate>.multi((emitter) {
+      late final StreamSubscription sub;
+      sub = base.listen(
+        (u) {
+          emitter.add(u);
+          if (u is TurnEnded) {
+            unawaited(sub.cancel());
+            scheduleMicrotask(emitter.close);
+          }
+        },
+        onError: (e, st) => emitter.addError(e, st),
+        onDone: () => scheduleMicrotask(emitter.close),
+      );
+    });
   }
 
   /// Cancel the current turn for a session.
@@ -174,14 +177,27 @@ class SessionManager {
   // Expose a persistent session updates stream (includes replay from
   // session/load and updates across multiple prompts)
   /// Persistent session update stream, including replay.
-  Stream<AcpUpdate> sessionUpdates(String sessionId) =>
-      _sessionStreams[sessionId]?.stream ?? const Stream<AcpUpdate>.empty();
+  Stream<AcpUpdate> sessionUpdates(String sessionId) async* {
+    final buffer = List<AcpUpdate>.from(_replayBuffers[sessionId] ?? const []);
+    for (final u in buffer) {
+      yield u;
+    }
+    yield* _sessionStreams
+        .putIfAbsent(sessionId, StreamController<AcpUpdate>.broadcast)
+        .stream;
+  }
 
   void _routeSessionUpdate(Json json) {
     final sessionId = json['sessionId'] as String?;
     final update = json['update'] as Map<String, dynamic>?;
     if (sessionId == null || update == null) return;
-    if (!_sessionStreams.containsKey(sessionId)) return;
+    // Ensure structures exist so we don't drop early updates (e.g., commands
+    // emitted immediately after session/new).
+    _sessionStreams.putIfAbsent(
+      sessionId,
+      StreamController<AcpUpdate>.broadcast,
+    );
+    _replayBuffers.putIfAbsent(sessionId, () => <AcpUpdate>[]);
 
     final kind = update['sessionUpdate'];
     if (kind == 'available_commands_update') {
@@ -189,11 +205,17 @@ class SessionManager {
           (update['availableCommands'] as List?)
               ?.cast<Map<String, dynamic>>() ??
           const [];
-      _sessionStreams[sessionId]!.add(AvailableCommandsUpdate(cmds));
+      final u = AvailableCommandsUpdate(cmds);
+      _replayBuffers[sessionId]!.add(u);
+      _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'plan') {
-      _sessionStreams[sessionId]!.add(PlanUpdate(update));
+      final u = PlanUpdate(update);
+      _replayBuffers[sessionId]!.add(u);
+      _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'tool_call' || kind == 'tool_call_update') {
-      _sessionStreams[sessionId]!.add(ToolCallUpdate(update));
+      final u = ToolCallUpdate(update);
+      _replayBuffers[sessionId]!.add(u);
+      _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'user_message_chunk' ||
         kind == 'agent_message_chunk' ||
         kind == 'agent_thought_chunk') {
@@ -202,13 +224,17 @@ class SessionManager {
           ? <Map<String, dynamic>>[content]
           : (content as List?)?.cast<Map<String, dynamic>>() ?? const [];
       final role = kind == 'user_message_chunk' ? 'user' : 'assistant';
-      _sessionStreams[sessionId]!.add(
-        MessageDelta(role: role, content: blocks),
-      );
+      final u = MessageDelta(role: role, content: blocks);
+      _replayBuffers[sessionId]!.add(u);
+      _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'diff') {
-      _sessionStreams[sessionId]!.add(DiffUpdate(update));
+      final u = DiffUpdate(update);
+      _replayBuffers[sessionId]!.add(u);
+      _sessionStreams[sessionId]!.add(u);
     } else {
-      _sessionStreams[sessionId]!.add(UnknownUpdate(json));
+      final u = UnknownUpdate(json);
+      _replayBuffers[sessionId]!.add(u);
+      _sessionStreams[sessionId]!.add(u);
     }
   }
 

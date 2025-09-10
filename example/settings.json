@@ -3,7 +3,7 @@
     "claude-code": {
       "command": "npx",
       "args": [
-        "acp-claude-code"
+        "@zed-industries/claude-code-acp"
       ],
       "env": {
         "ACP_PERMISSION_MODE": "acceptEdits",
@@ -22,8 +22,7 @@
         "example/mock_agent.dart"
       ]
     }
-  }
-  ,
+  },
   "mcp_servers": [
     {
       "name": "filesystem",
