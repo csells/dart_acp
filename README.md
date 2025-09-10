@@ -206,38 +206,165 @@ final client = AcpClient(
 );
 ```
 ```
-### Triggering Behaviors
+### Slash Commands
 
-Use prompts that encourage the agent to emit specific ACP updates. The CLI is prompt‑first and simply passes your text; frames stream back as‑is in JSONL.
+Agents can expose slash commands (like `/help`, `/status`, etc.) via the ACP protocol. The CLI provides discovery and execution of these commands.
 
-- Slash commands: `--list-commands` (with no prompt) prints the agent's available slash commands without sending a prompt.
-  - If needed, you can also ask explicitly in a prompt, but the CLI does not do so for `--list-commands`.
-  - In JSONL, assert a `session/update` with `"sessionUpdate":"available_commands_update"`.
-  - In text mode, look for `[commands] …`.
+#### Discovering Available Commands
 
-- Plans: ask for a multi‑step plan and to stop before applying:
-  - Before doing anything, produce a 3‑step plan to add a "Testing" section to README.md. Stream plan updates for each step as you go. Stop after presenting the plan; do not apply changes yet.
-  - In JSONL, look for `session/update` containing `"plan"`.
-  - In text mode, the CLI prints `[plan] …` on each update.
+Use `--list-commands` to see what commands the agent supports:
 
-- Diffs: request a diff‑only proposal without applying:
-  - Propose changes to README.md adding a "How to Test" section. Do not apply changes; send only a diff.
-  - In JSONL, look for a `session/update` with `"sessionUpdate":"diff"`.
-  - In text mode, look for `[diff] …`.
+```bash
+# List commands without sending a prompt
+dart example/agcli.dart -a claude-code --list-commands
 
-- File I/O sanity: encourage read tool calls:
-  - Read README.md and summarize in one paragraph.
-  - In JSONL, expect `tool_call`/`tool_call_update` frames.
+# Example output:
+# /pet-pet - Pet your companion - give them love and attention
+# /pet-feed - Feed your pet (pizza, cookie, sushi, apple, burger, donut, ramen, taco)
+# /init - Initialize a new CLAUDE.md file with codebase documentation
+# /review - Review a pull request
+# ...
+```
 
-Notes:
-- JSONL mode mirrors raw JSON‑RPC frames on stdout only; no human text. Permission logs are suppressed.
-- Emission depends on the agent/model; prompts above are tuned for Gemini and Claude Code.
+Note: Gemini currently doesn't expose slash commands, so the list will be empty.
+
+#### Executing Commands
+
+Simply include the slash command in your prompt:
+
+```bash
+# Execute a specific command
+dart example/agcli.dart -a claude-code "/pet-status"
+
+# Commands can be combined with other text
+dart example/agcli.dart -a claude-code "/review this PR and suggest improvements"
+```
+
+### Plans and Progress Tracking
+
+Agents can emit structured plans showing their approach to complex tasks, with real-time progress updates.
+
+#### Requesting Plans
+
+Ask the agent to create a plan before executing:
+
+```bash
+# Request a plan without execution
+dart example/agcli.dart -a gemini "Create a detailed plan to refactor the authentication module. Don't implement yet, just show the plan."
+
+# In text mode, plan updates appear as:
+# [plan] {"title": "Refactoring Authentication", "steps": [...], "status": "in_progress"}
+```
+
+#### Viewing Progress
+
+As the agent works through a plan, it emits progress updates:
+
+```bash
+# Execute a multi-step task with progress tracking
+dart example/agcli.dart -a claude-code "Add comprehensive error handling to all API endpoints"
+
+# Progress appears in text mode as:
+# [plan] {"step": 1, "description": "Analyzing existing error handling", "status": "complete"}
+# [plan] {"step": 2, "description": "Adding try-catch blocks", "status": "in_progress"}
+```
+
+#### JSONL Mode for Plans
+
+For programmatic access, use JSONL mode:
+
+```bash
+dart example/agcli.dart -a gemini -o jsonl "Create a testing strategy" | grep '"plan"'
+# Outputs session/update frames with plan details
+```
+
+### Diffs and Code Changes
+
+Agents can propose changes as diffs before applying them, allowing review of modifications.
+
+#### Requesting Diffs
+
+Ask for changes to be shown as diffs:
+
+```bash
+# Request a diff without applying changes
+dart example/agcli.dart -a claude-code "Show me a diff to add input validation to the login function. Don't apply the changes."
+
+# In text mode, diffs appear as:
+# [diff] {"file": "auth.js", "changes": [{"line": 42, "old": "...", "new": "..."}]}
+```
+
+#### Reviewing Before Applying
+
+```bash
+# Two-step process: review then apply
+dart example/agcli.dart -a gemini "Create a diff to optimize the database queries"
+# Review the diff output...
+dart example/agcli.dart -a gemini "Apply the optimization changes we just reviewed"
+```
+
+#### Diff Format in JSONL
+
+```bash
+# Get structured diff data
+dart example/agcli.dart -a claude-code -o jsonl "Propose type safety improvements" | jq '.params.update | select(.sessionUpdate == "diff")'
+```
+
+### Tool Calls and File Operations
+
+Monitor what tools the agent is using:
+
+```bash
+# In text mode, tool calls are shown
+dart example/agcli.dart -a gemini "Analyze all Python files for security issues"
+# [tool] {"name": "fs_read_text_file", "path": "main.py"}
+# [tool] {"name": "fs_read_text_file", "path": "auth.py"}
+# ...
+
+# In JSONL mode for detailed tool tracking
+dart example/agcli.dart -a claude-code -o jsonl "Update dependencies" | grep tool_call
+```
+
+### Output Modes Summary
+
+The CLI supports different output modes to suit various use cases:
+
+| Mode | Flag | Description | Shows |
+|------|------|-------------|-------|
+| Text | `-o text` (default) | Human-readable with metadata | Assistant messages, thinking, [plan], [diff], [tool] markers |
+| Simple | `-o simple` | Clean output only | Assistant messages only (no thinking or metadata) |
+| JSONL | `-o jsonl` | Raw protocol frames | All JSON-RPC messages, one per line |
+| JSON | `-o json` | Same as JSONL | Alias for JSONL mode |
 
 ### How to Test
 
-This project uses the `test` package. To run the tests, use the `dart test` command:
+This project uses the `test` package and contains a mix of unit and end-to-end (e2e) tests.
+
+#### Unit Tests (Always Run)
+To run only the unit tests (recommended for quick testing):
+
+```bash
+dart test --exclude-tags e2e
+```
+
+#### E2E Tests (Require Real Agents)
+The e2e tests require actual agents (Gemini, Claude Code) to be configured and available. These tests are tagged with 'e2e' and will timeout if the agents aren't running.
+
+To run all tests including e2e:
 
 ```bash
 dart test
+```
+
+To run only e2e tests:
+
+```bash
+dart test --tags e2e
+```
+
+To run a specific test file:
+
+```bash
+dart test test/unit_capabilities_test.dart
 ```
 

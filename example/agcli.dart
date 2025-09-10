@@ -176,16 +176,19 @@ Future<void> main(List<String> argv) async {
   if (args.output == OutputMode.text) {
     sessionSub = updatesStream.listen((u) {
       if (u is AvailableCommandsUpdate) {
-        final cmds = u.commands;
-        if (cmds.isNotEmpty) {
-          for (final c in cmds) {
-            final name = (c['name'] ?? c['title'] ?? '').toString();
-            final desc = (c['description'] ?? '').toString();
-            if (name.isEmpty) continue;
-            if (desc.isEmpty) {
-              stdout.writeln('/$name');
-            } else {
-              stdout.writeln('/$name - $desc');
+        // Only print commands if --list-commands was passed
+        if (listOnly) {
+          final cmds = u.commands;
+          if (cmds.isNotEmpty) {
+            for (final c in cmds) {
+              final name = (c['name'] ?? c['title'] ?? '').toString();
+              final desc = (c['description'] ?? '').toString();
+              if (name.isEmpty) continue;
+              if (desc.isEmpty) {
+                stdout.writeln('/$name');
+              } else {
+                stdout.writeln('/$name - $desc');
+              }
             }
           }
         }
@@ -220,6 +223,7 @@ Future<void> main(List<String> argv) async {
     } on TimeoutException {
       // No command update observed; don't print anything
     }
+    await onceSub.cancel();  // Cancel the subscription
     await sigintSub.cancel();
     await sessionSub?.cancel();
     await client.dispose();
@@ -234,6 +238,10 @@ Future<void> main(List<String> argv) async {
   await for (final u in updates) {
     if (u is MessageDelta) {
       if (!args.output.isJsonLike) {
+        // In simple mode, skip thought chunks
+        if (args.output == OutputMode.simple && u.isThought) {
+          continue;
+        }
         final texts = u.content
             .where((b) => b['type'] == 'text')
             .map((b) => b['text'] as String)

@@ -224,7 +224,11 @@ class SessionManager {
           ? <Map<String, dynamic>>[content]
           : (content as List?)?.cast<Map<String, dynamic>>() ?? const [];
       final role = kind == 'user_message_chunk' ? 'user' : 'assistant';
-      final u = MessageDelta(role: role, content: blocks);
+      final u = MessageDelta(
+        role: role,
+        content: blocks,
+        isThought: kind == 'agent_thought_chunk',
+      );
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'diff') {

@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 void main() {
-  group('agcli e2e real adapters', () {
+  group('agcli e2e real adapters', tags: 'e2e', () {
     test('gemini: list commands (jsonl) — may be empty', () async {
       final proc = await Process.start('dart', [
         'example/agcli.dart',
@@ -14,13 +14,24 @@ void main() {
         'jsonl',
         '--list-commands',
       ]);
-      await proc.stdout
+      // Close stdin immediately since we're not sending any input
+      await proc.stdin.close();
+      
+      // Collect output in background without waiting
+      final lines = <String>[];
+      proc.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
-          .toList();
-      final code = await proc.exitCode.timeout(const Duration(minutes: 2));
-      final stderrText = await proc.stderr.transform(utf8.decoder).join();
-      expect(code, 0, reason: 'list-commands run failed. stderr= $stderrText');
+          .listen(lines.add);
+      final stderrBuffer = StringBuffer();
+      proc.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
+      
+      final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+      expect(
+        code,
+        0,
+        reason: 'list-commands run failed. stderr= ${stderrBuffer.toString()}',
+      );
       // Gemini may not emit available_commands_update; accept absence.
     }, timeout: const Timeout(Duration(minutes: 2)));
 
@@ -31,12 +42,20 @@ void main() {
         'gemini',
         '--list-commands',
       ]);
-      final out = await proc.stdout.transform(utf8.decoder).join();
-      final code = await proc.exitCode.timeout(const Duration(minutes: 2));
+      // Close stdin immediately since we're not sending any input
+      await proc.stdin.close();
+      
+      final outBuffer = StringBuffer();
+      proc.stdout.transform(utf8.decoder).listen(outBuffer.write);
+      
+      final code = await proc.exitCode.timeout(const Duration(seconds: 30));
       expect(code, 0);
       // Gemini returns no commands, so output should be empty
-      expect(out.trim(), isEmpty, 
-        reason: 'Expected empty output for no commands');
+      expect(
+        outBuffer.toString().trim(),
+        isEmpty,
+        reason: 'Expected empty output for no commands',
+      );
     }, timeout: const Timeout(Duration(minutes: 2)));
 
     test(
@@ -50,12 +69,16 @@ void main() {
           'jsonl',
           '--list-commands',
         ]);
-        final lines = await proc.stdout
+      // Close stdin immediately since we're not sending any input
+      await proc.stdin.close();
+        final linesFuture = proc.stdout
             .transform(utf8.decoder)
             .transform(const LineSplitter())
             .toList();
-        final code = await proc.exitCode.timeout(const Duration(minutes: 3));
-        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final stderrFuture = proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        final lines = await linesFuture;
+        final stderrText = await stderrFuture;
         expect(
           code,
           0,
@@ -79,9 +102,13 @@ void main() {
         'gemini',
         'Quick check of text mode',
       ]);
-      final out = await proc.stdout.transform(utf8.decoder).join();
+      // Close stdin immediately since we're not sending any input
+      await proc.stdin.close();
+      final outFuture = proc.stdout.transform(utf8.decoder).join();
+      final stderrFuture = proc.stderr.transform(utf8.decoder).join();
       final code = await proc.exitCode.timeout(const Duration(minutes: 1));
-      final stderrText = await proc.stderr.transform(utf8.decoder).join();
+      final out = await outFuture;
+      final stderrText = await stderrFuture;
       expect(
         code,
         0,
@@ -103,12 +130,14 @@ void main() {
       proc.stdin.writeln('Hello from stdin');
       await proc.stdin.flush();
       await proc.stdin.close();
-      final lines = await proc.stdout
+      final linesFuture = proc.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .toList();
+      final stderrFuture = proc.stderr.transform(utf8.decoder).join();
       final code = await proc.exitCode.timeout(const Duration(minutes: 2));
-      final stderrText2 = await proc.stderr.transform(utf8.decoder).join();
+      final lines = await linesFuture;
+      final stderrText2 = await stderrFuture;
       expect(
         code,
         0,
@@ -138,9 +167,11 @@ void main() {
           'simple',
           'Hello',
         ]);
-        final out = await proc.stdout.transform(utf8.decoder).join();
+        final outFuture = proc.stdout.transform(utf8.decoder).join();
+        final stderrFuture = proc.stderr.transform(utf8.decoder).join();
         final code = await proc.exitCode.timeout(const Duration(minutes: 2));
-        final stderrText3 = await proc.stderr.transform(utf8.decoder).join();
+        final out = await outFuture;
+        final stderrText3 = await stderrFuture;
         expect(
           code,
           0,
@@ -171,9 +202,11 @@ void main() {
         proc.stdin.writeln('Hello from stdin');
         await proc.stdin.flush();
         await proc.stdin.close();
-        final out = await proc.stdout.transform(utf8.decoder).join();
+        final outFuture = proc.stdout.transform(utf8.decoder).join();
+        final stderrFuture = proc.stderr.transform(utf8.decoder).join();
         final code = await proc.exitCode.timeout(const Duration(minutes: 3));
-        final stderrText4 = await proc.stderr.transform(utf8.decoder).join();
+        final out = await outFuture;
+        final stderrText4 = await stderrFuture;
         expect(
           code,
           0,
@@ -341,6 +374,8 @@ void main() {
         'jsonl',
         'Hello from e2e',
       ]);
+      // Close stdin immediately since we're not sending any input
+      await proc.stdin.close();
       final lines = await proc.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
@@ -376,12 +411,16 @@ void main() {
           'jsonl',
           'Hello from e2e',
         ]);
-        final lines = await proc.stdout
+      // Close stdin immediately since we're not sending any input
+      await proc.stdin.close();
+        final linesFuture = proc.stdout
             .transform(utf8.decoder)
             .transform(const LineSplitter())
             .toList();
-        final code = await proc.exitCode.timeout(const Duration(minutes: 3));
-        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final stderrFuture = proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        final lines = await linesFuture;
+        final stderrText = await stderrFuture;
         expect(
           code,
           0,
@@ -564,6 +603,8 @@ void main() {
           'jsonl',
           'Read README.md and summarize in one paragraph.',
         ]);
+      // Close stdin immediately since we're not sending any input
+      await proc.stdin.close();
         final lines = await proc.stdout
             .transform(utf8.decoder)
             .transform(const LineSplitter())

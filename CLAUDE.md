@@ -6,17 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Running Tests
 ```bash
-# Run all tests
+# Run unit tests only (recommended for quick testing)
+dart test --exclude-tags e2e
+
+# Run all tests including e2e (requires real agents)
 dart test
 
+# Run only e2e tests (requires Gemini/Claude Code)
+dart test --tags e2e
+
 # Run a specific test file
-dart test test/acp_client_e2e_test.dart
+dart test test/unit_capabilities_test.dart
 
 # Run tests matching a name pattern
 dart test -n "session"
-
-# Run tests with specific tags
-dart test -t integration
 ```
 
 ### Code Quality

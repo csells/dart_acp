@@ -18,13 +18,20 @@ class PlanUpdate extends AcpUpdate {
 /// Streaming message delta, for user/assistant content blocks.
 class MessageDelta extends AcpUpdate {
   /// Create a message delta.
-  const MessageDelta({required this.role, required this.content});
+  const MessageDelta({
+    required this.role,
+    required this.content,
+    this.isThought = false,
+  });
 
   /// Role of the author ('assistant' or 'user').
   final String role;
 
   /// Content blocks comprising this delta.
   final List<Map<String, dynamic>> content;
+  
+  /// Whether this is a thought chunk (vs a message chunk).
+  final bool isThought;
 }
 
 /// Tool call creation/progress/completion update.

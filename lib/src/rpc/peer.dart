@@ -17,6 +17,12 @@ class JsonRpcPeer {
   /// Underlying JSON-RPC peer.
   final rpc.Peer _peer;
   final StreamController<Json> _sessionUpdates = StreamController.broadcast();
+  
+  /// Close the peer and clean up resources.
+  Future<void> close() async {
+    await _peer.close();
+    await _sessionUpdates.close();
+  }
 
   /// Stream of raw `session/update` notifications.
   Stream<Json> get sessionUpdates => _sessionUpdates.stream;

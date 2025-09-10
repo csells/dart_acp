@@ -8,7 +8,7 @@ import 'package:test/test.dart';
 import '../example/settings.dart';
 
 void main() {
-  group('AcpClient e2e real adapters', () {
+  group('AcpClient e2e real adapters', tags: 'e2e', () {
     late Settings settings;
 
     setUpAll(() async {
@@ -65,7 +65,13 @@ void main() {
       );
 
       final collected = <AcpUpdate>[];
-      await for (final u in updates) {
+      await for (final u in updates.timeout(
+        const Duration(seconds: 60),
+        onTimeout: (sink) {
+          // If we timeout, close the sink to end the stream
+          sink.close();
+        },
+      )) {
         collected.add(u);
         if (u is TurnEnded) break;
       }
