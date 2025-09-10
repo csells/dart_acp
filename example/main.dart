@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_acp/dart_acp.dart';
+import 'package:json_rpc_2/json_rpc_2.dart' as rpc;
 import 'package:mime/mime.dart' as mime;
 import 'package:path/path.dart' as p;
 
@@ -135,20 +136,48 @@ Future<void> main(List<String> argv) async {
     exit(130);
   });
 
-  await client.start();
-  await client.initialize();
-  if (args.resumeSessionId != null) {
-    _sessionId = args.resumeSessionId;
-    await client.loadSession(sessionId: _sessionId!);
-  } else {
-    _sessionId = await client.newSession();
-    if (args.saveSessionPath != null) {
-      try {
-        await File(args.saveSessionPath!).writeAsString(_sessionId!);
-      } on Exception catch (e) {
-        stderr.writeln('Warning: failed to save session id: $e');
+  try {
+    await client.start();
+    await client.initialize();
+    if (args.resumeSessionId != null) {
+      _sessionId = args.resumeSessionId;
+      await client.loadSession(sessionId: _sessionId!);
+    } else {
+      _sessionId = await client.newSession();
+      if (args.saveSessionPath != null) {
+        try {
+          await File(args.saveSessionPath!).writeAsString(_sessionId!);
+        } on Exception catch (e) {
+          stderr.writeln('Warning: failed to save session id: $e');
+        }
       }
     }
+  } on rpc.RpcException catch (e) {
+    // Improve the auth-required error with selected agent context and guidance.
+    final message = e.message.toLowerCase();
+    if (e.code == -32000 &&
+        message.contains('auth') &&
+        message.contains('required')) {
+      stderr.writeln(
+        'JSON-RPC error -32000: Authentication required '
+        '(agent_server: $agentName -> ${agent.command}).',
+      );
+      stderr.writeln(
+        'Tip: try logging out, then logging back in for this agent, and retry.',
+      );
+    } else {
+      stderr.writeln('JSON-RPC error ${e.code}: ${e.message}');
+    }
+    await sigintSub.cancel();
+    await client.dispose();
+    exitCode = 2;
+    return;
+  } on Object catch (e) {
+    stderr.writeln('Error: $e');
+    await sigintSub.cancel();
+    await client.dispose();
+    exitCode = 2;
+    return;
   }
 
   // Subscribe terminal events (text mode only)
@@ -215,12 +244,28 @@ Future<void> main(List<String> argv) async {
         unawaited(onceSub.cancel());
       }
     });
-    // Wait for command discovery; keep this modest so agents like Gemini
-    // return quickly (empty), while Claude Code has time to publish.
+    // Wait briefly for command discovery; if none arrives in time,
+    // treat it as an empty available commands result for tooling.
     try {
       await settle.future.timeout(const Duration(seconds: 2));
     } on TimeoutException {
-      // No command update observed; don't print anything
+      // If the agent didn't emit available_commands_update and we're in
+      // JSONL mode, synthesize an empty available_commands_update frame
+      // for tooling consistency.
+      if (args.output.isJsonLike) {
+        final synthetic = {
+          'jsonrpc': '2.0',
+          'method': 'session/update',
+          'params': {
+            'sessionId': _sessionId,
+            'update': {
+              'sessionUpdate': 'available_commands_update',
+              'availableCommands': <dynamic>[],
+            },
+          },
+        };
+        stdout.writeln(jsonEncode(synthetic));
+      }
     }
     await onceSub.cancel(); // Cancel the subscription
     await sigintSub.cancel();
