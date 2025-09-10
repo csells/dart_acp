@@ -12,7 +12,7 @@ ACP Specification: https://agentclientprotocol.com/overview/introduction
 
 - A high‑level client façade for **initialize → session/new|session/load → session/prompt → session/cancel**.
 - A **stream of updates** (plan changes, assistant message chunks, tool calls, diffs, available commands, etc.).
-- **Agent→Client callbacks** for file system reads/writes and permission prompts.
+- **Agent→Client callbacks** for file system reads/writes, permission prompts, and terminal lifecycle.
 - **Transport abstraction** (transport‑agnostic; supports stdio; TCP/WebSocket also possible).
 \- **CLI settings**: the example CLI resolves agent command/args and environment overlay from a `settings.json` file located next to the CLI (script directory).
 
@@ -52,7 +52,7 @@ flowchart LR
     T[AcpTransport: transport abstraction]
     P[JsonRpc Peer: req/resp + notify]
     S[Acp Session Manager: init, new, load, prompt, cancel]
-    H[Client Hooks: FS Provider, Permission Provider]
+    H[Client Hooks: FS, Permission, Terminal Providers]
     U[Acp Update Stream: plan, chunks, tool calls, diffs, stop]
   end
 
@@ -65,8 +65,9 @@ flowchart LR
   P <--> T
   T <--> Z
   Z -->|session/update| U
-  Z -->|fs.read/write| H
+  Z -->|fs/read, fs/write| H
   Z -->|request_permission| H
+  Z -->|terminal/*| H
   S -->|cancel| P
 ```
 
@@ -74,7 +75,7 @@ flowchart LR
 - **Transport** abstracts how bytes flow; first implementation spawns a subprocess and wires stdin/stdout.  
 - **JsonRpc Peer** is a single bidirectional peer so the agent can issue callbacks to the client.  
 - **Session Manager** encapsulates ACP method orchestration, session lifecycle, and update demux.  
-- **Hooks** are app‑provided handlers used when the agent requests FS or permissions.  
+- **Hooks** are app‑provided handlers used when the agent requests FS, permissions, or terminal lifecycle.  
 - **Update Stream** provides a single, ordered stream the host can subscribe to.
 
 ---
@@ -85,7 +86,10 @@ flowchart LR
 - **session/new** & **session/load**: Start a new session (specify working directory / workspace root) or load an existing one if supported by the agent.  
 - **session/prompt**: Send content blocks; stream `session/update` notifications (plan entries, assistant message deltas, tool calls with status, diffs, available command updates, etc.); complete with a **StopReason**.  
 - **session/cancel**: Notify the agent; ensure pending permission prompts are resolved as cancelled; expect a final prompt result with `stopReason=cancelled`.  
-- **Agent→Client**: Handle `fs.readTextFile`/`fs.writeTextFile` and `session/request_permission` via the configured providers.
+- **Agent→Client**: Handle `fs/read_text_file`, `fs/write_text_file`, `session/request_permission`, and `terminal/*` via the configured providers.
+
+Notes
+- The wire method names follow ACP’s slash/underscore style (e.g., `fs/read_text_file`). Capability keys in `initialize.clientCapabilities` use camelCase (e.g., `readTextFile`).
 
 ---
 
@@ -133,6 +137,12 @@ sequenceDiagram
   Agent-->>Lib: session/prompt.result(stopReason)
   Lib-->>App: deliver stopReason
 ```
+
+Terminal lifecycle (when a `TerminalProvider` is supplied):
+- Agent calls `terminal/create` → client spawns a subprocess; emits `TerminalCreated`.
+- Agent polls `terminal/output` → client returns current buffered output and exit status; emits `TerminalOutputEvent`.
+- Agent calls `terminal/wait_for_exit` → client waits; emits `TerminalExited`.
+- Agent may call `terminal/kill` or `terminal/release`.
 
 ### 5.3 Cancellation Semantics
 
@@ -187,6 +197,7 @@ Constraints
 - **Providers**: 
   - **FS Provider**: read & write text files (workspace‑jail enforced; path normalization; symlink resolution).  
   - **Permission Provider**: policy or interactive decision for each `session/request_permission` (supports structured rationale and option rendering).  
+  - **Terminal Provider**: create/monitor/kill/release terminal subprocesses on behalf of the agent; corresponding UI events are available to hosts.
 - **Transport**: stdio process (spawn agent binary; configurable executable + args + cwd + extra env).  
 - **Configuration**: see §6 (environment-only configuration; no credential flows in client).
 
@@ -196,10 +207,11 @@ Constraints
 
 - **Agent command**: executable name and args (provided explicitly by the host).  
 - **Workspace root**: absolute path used for FS jail and as the default `cwd` for new sessions.  
-- **Client capabilities**: booleans for `fs.readTextFile`, `fs.writeTextFile`, etc. (disabled by default for safety; opt‑in to enable).  
+- **Client capabilities**: booleans for `fs.readTextFile`, `fs.writeTextFile`, etc. Default: read enabled, write disabled.  
 - **Environment behavior**: inherit parent env by default; optional additional env map; no persistence.  
-- **Timeouts**: per‑call configurable (initialize, prompt, permission).  
-- **Backpressure**: bounded notification queue size with drop/slow‑reader policy (configured).
+- **MCP servers**: optional list forwarded to `session/new` and `session/load`.  
+- **Workspace reads**: optional `allowReadOutsideWorkspace` (read‑anywhere “yolo”); writes are always confined to the workspace.  
+- **Timeouts/backpressure**: knobs are defined in config but not currently enforced by the implementation.
 
 ### 8.1 Example CLI Agent Selection via `settings.json`
 
@@ -273,6 +285,12 @@ When `--jsonl`/`-j` is set:
 - **Streams**: JSONL goes to `stdout`. Errors and diagnostics (non‑JSON lines) go to `stderr`.
 - **Client metadata line**: Before sending any protocol requests, the CLI emits a single JSON‑RPC notification line to `stdout` with `method="client/selected_agent"` and params `{ name, command }`. This line is for human/tooling context only and is not sent to the ACP agent; it is not part of the transport stream. Arguments and environment variables are deliberately omitted to avoid leaking secrets.
 
+### 8.3 Prompt Mentions → `resource_link` blocks
+
+- The CLI parses `@`‑mentions in the user prompt and adds `resource_link` content blocks for each file/URL mentioned while leaving the original text intact.
+- Supported forms: `@path`, `@"file with spaces.txt"`, `@https://example.com/x` (tilde `~` expands to `$HOME`).
+- Each link includes a best‑effort `mimeType` based on filename or URL.
+
 ---
 
 ## 9. Security & Privacy
@@ -287,20 +305,19 @@ When `--jsonl`/`-j` is set:
 
 ## 10. Error Handling & Diagnostics
 
-- **Structured errors**: propagate JSON‑RPC error `code/message/data` to the host app.  
-- **Transport faults**: map to retryable/non‑retryable errors; provide last N protocol frames for debugging (redacted).  
+- **Structured errors**: propagate JSON‑RPC errors (`code/message/data`) to the host app as thrown exceptions or stream errors.  
+- **Transport faults**: surfaced as exceptions from the transport/process spawn.  
 - **Protocol violations**: fail the in‑flight call and close the session if needed.  
-- **Agent availability**: friendly message if the agent executable is not found on `PATH`.  
-- **Observability hooks**: optional logger callback (with PII/secret redaction).
+- **Observability hooks**: configurable `Logger` and optional raw JSONL taps for inbound/outbound frames.
 
 ---
 
 ## 11. Performance Considerations
 
 - **Streaming-first**: flush updates as they arrive; avoid buffering large diffs.  
-- **Coalescing**: optionally coalesce frequent plan updates.  
 - **Zero‑copy text**: pass message chunks as references where possible.  
-- **Concurrency**: handle multiple Agent→Client requests (FS/permissions) concurrently with backpressure.
+- **Concurrency**: handle Agent→Client requests (FS/permissions/terminal) concurrently.  
+- Backpressure/coalescing may be added later if needed.
 
 ---
 
@@ -319,25 +336,25 @@ When `--jsonl`/`-j` is set:
 - **Cancellation tests**: verify `stopReason=cancelled` and permission prompts resolved as cancelled.  
 - **Agent exec discovery**: skip integration tests if the agent binary is unavailable.  
 - **Settings.json tests**: parsing, validation errors, agent selection, and environment overlay semantics.
+ - **MCP forwarding**: verify `mcpServers` are included in `session/new` and `session/load`.
 
 ---
 
 ## 14. Release Plan
 
 - **v0.1.0**: stdio transport; initialize/new/load/prompt/cancel; FS + permission hooks; updates stream; example with a generic ACP agent.  
-- **v0.2.0**: diagnostics improvements, backpressure/timeout knobs.  
-- **v0.3.0** *(this design)*: CLI agent selection via `settings.json` next to the CLI (`--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, error semantics for missing file/agent, and JSONL mirroring to `stdout` (`--jsonl/-j`).  
-- **Future**: TCP/WebSocket transport; agent‑side Dart helpers; richer diff/command UX adapters; MCP server discovery passthrough.
+- **v0.2.0**: diagnostics improvements (logger, JSONL taps).  
+- **v0.3.0** *(current)*: CLI agent selection via `settings.json` (script dir, `--agent/-a`), strict JSON parsing, first‑listed default, env merge overlay, JSONL mirroring to `stdout` (`--jsonl/-j`), MCP server forwarding, terminal provider support.  
+- **Future**: TCP/WebSocket transport; agent‑side Dart helpers; richer diff/command UX adapters; backpressure/timeout enforcement.
 
 ---
 
 ## 15. Open Questions / Decisions for Chris
 
-1. **FS capabilities default**: keep disabled by default (safer) or enable read by default and gate write?  
-2. **Permission UX policy**: should the default be *prompt* (interactive) or *deny* unless explicitly allowed?  
-3. **Env variable guidance**: any conventions you want documented for common variables (naming, casing) without listing provider-specific keys?  
-4. **Backpressure policy**: on slow consumer, prefer blocking the transport read or dropping oldest updates (with a warning)?  
-5. **StopReason surfacing**: anything special your `dartantic_ai` adapter should map (e.g., `refusal` → a specific UI state)?
+1. **Permission UX policy**: default provider currently auto‑allows read operations and denies others; should we change defaults or expose more granular policy?  
+2. **Env variable guidance**: any conventions you want documented for common variables (naming, casing) without listing provider‑specific keys?  
+3. **Backpressure policy**: on slow consumer, prefer blocking the transport read or dropping oldest updates (with a warning)?  
+4. **StopReason surfacing**: anything special your `dartantic_ai` adapter should map (e.g., `refusal` → a specific UI state)?
 
 ---
 
@@ -422,6 +439,12 @@ Example:
 - `-o simple`: only the assistant’s streaming text chunks.
 - `-o jsonl|json`: raw JSON‑RPC frames (JSON Lines) for both directions. Stderr is used for errors/diagnostics only.
 
+### 17.6 Exit Codes
+
+- `0`: Prompt completed successfully (any non‑error `StopReason`).  
+- `130`: Cancelled by user (Ctrl‑C); client sends `session/cancel` (best‑effort) then exits.  
+- `>0`: Configuration, transport, or protocol error (including missing/invalid `settings.json` or unknown agent).
+
 ### 17.7 Triggering Behaviors (Prompts)
 
 The CLI is prompt‑first: it doesn’t synthesize protocol frames beyond `--list-commands`. Use prompts that elicit the desired ACP updates:
@@ -443,12 +466,11 @@ The CLI is prompt‑first: it doesn’t synthesize protocol frames beyond `--lis
   - “Read README.md and summarize in one paragraph.”
   - Expect `tool_call`/`tool_call_update` frames.
 
-### 17.6 Exit Codes
+- Mentions → resource links:
+  - “Review @lib/src/acp_client.dart and @https://example.com/spec.txt”
+  - Expect `session/prompt` to include `resource_link` blocks for both references.
 
-- `0`: Prompt completed successfully (any non‑error `StopReason`).  
-- `>0`: Configuration, transport, or protocol error (including missing/invalid `settings.json` or unknown agent).
-
-### 17.7 Examples
+### 17.8 Examples
 
 ```bash
 # With inline prompt and default (first) agent

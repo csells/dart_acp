@@ -219,8 +219,6 @@ Use `--list-commands` to see what commands the agent supports:
 dart example/main.dart -a claude-code --list-commands
 
 # Example output:
-# /pet-pet - Pet your companion - give them love and attention
-# /pet-feed - Feed your pet (pizza, cookie, sushi, apple, burger, donut, ramen, taco)
 # /init - Initialize a new CLAUDE.md file with codebase documentation
 # /review - Review a pull request
 # ...
@@ -233,9 +231,6 @@ Note: Gemini currently doesn't expose slash commands, so the list will be empty.
 Simply include the slash command in your prompt:
 
 ```bash
-# Execute a specific command
-dart example/main.dart -a claude-code "/pet-status"
-
 # Commands can be combined with other text
 dart example/main.dart -a claude-code "/review this PR and suggest improvements"
 ```
