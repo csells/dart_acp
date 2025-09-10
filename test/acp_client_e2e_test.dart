@@ -196,13 +196,16 @@ void main() {
                 ' Do not apply changes; send only a diff.',
             workspace: dir.path,
             onUpdates: (updates) {
-              final hasStructuredDiff =
-                  updates.any((u) => u is DiffUpdate);
-              final hasTextDiff = updates.any((u) =>
-                  u is MessageDelta &&
-                  u.content.any((b) =>
-                      (b['type'] == 'text') &&
-                      (b['text'] as String).contains('```diff')));
+              final hasStructuredDiff = updates.any((u) => u is DiffUpdate);
+              final hasTextDiff = updates.any(
+                (u) =>
+                    u is MessageDelta &&
+                    u.content.any(
+                      (b) =>
+                          (b['type'] == 'text') &&
+                          (b['text'] as String).contains('```diff'),
+                    ),
+              );
               expect(
                 hasStructuredDiff || hasTextDiff,
                 isTrue,

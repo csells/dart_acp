@@ -40,6 +40,7 @@ Options:
       --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)
       --write            Enable write capability (still confined to CWD)
       --list-commands    Print available slash commands (ACP AvailableCommand) without sending a prompt
+      --list-caps        Print capabilities from initialize (protocolVersion, authMethods, agentCapabilities) and exit
       --resume <id>      Resume an existing session (replay), then send the prompt
       --save-session <p> Save new sessionId to file
   -h, --help             Show this help and exit
@@ -226,6 +227,32 @@ dart example/main.dart -a claude-code --list-commands
 
 Note: Gemini currently doesn't expose slash commands, so the list will be empty.
 
+### Capabilities (Initialize)
+
+Inspect agent capabilities negotiated during `initialize`:
+
+```bash
+# Human-readable summary (no session is created)
+dart example/main.dart -a claude-code --list-caps
+
+# Example output (text mode)
+protocolVersion: 1
+authMethods:
+  - claude-login: Log in with Claude Code
+agentCapabilities:
+  - promptCapabilities:
+    - embeddedContext: true
+    - image: true
+
+# JSONL frames (inspect the initialize result)
+dart example/main.dart -a claude-code -o jsonl --list-caps | jq 'select(.result!=null)'
+```
+
+The JSONL initialize result may include:
+- `protocolVersion`: negotiated protocol version
+- `authMethods`: available auth methods (if any)
+- `agentCapabilities`: adapter-reported capabilities (if any)
+
 #### Executing Commands
 
 Simply include the slash command in your prompt:
@@ -362,4 +389,3 @@ To run a specific test file:
 ```bash
 dart test test/unit_capabilities_test.dart
 ```
-

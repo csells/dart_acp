@@ -6,6 +6,105 @@ import 'package:test/test.dart';
 void main() {
   group('agcli e2e real adapters', tags: 'e2e', () {
     test(
+      'claude-code: list caps (jsonl)',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '-a',
+          'claude-code',
+          '-o',
+          'jsonl',
+          '--list-caps',
+        ]);
+        await proc.stdin.close();
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(code, 0, reason: 'list-caps failed. stderr= $stderrText');
+        // Expect an initialize result with protocolVersion
+        final hasInitResult = lines.any((l) {
+          try {
+            final m = jsonDecode(l) as Map<String, dynamic>;
+            final res = m['result'];
+            return res is Map && res.containsKey('protocolVersion');
+          } on Object {
+            return false;
+          }
+        });
+        expect(hasInitResult, isTrue, reason: 'No initialize result observed');
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'gemini: list caps (jsonl) — may be minimal',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '-a',
+          'gemini',
+          '-o',
+          'jsonl',
+          '--list-caps',
+        ]);
+        await proc.stdin.close();
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(code, 0, reason: 'list-caps failed. stderr= $stderrText');
+        final hasInitResult = lines.any((l) {
+          try {
+            final m = jsonDecode(l) as Map<String, dynamic>;
+            final res = m['result'];
+            return res is Map && res.containsKey('protocolVersion');
+          } on Object {
+            return false;
+          }
+        });
+        expect(hasInitResult, isTrue, reason: 'No initialize result observed');
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'claude-code: list caps (json alias to jsonl)',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '-a',
+          'claude-code',
+          '-o',
+          'json',
+          '--list-caps',
+        ]);
+        await proc.stdin.close();
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(code, 0, reason: 'list-caps failed. stderr= $stderrText');
+        final hasInitResult = lines.any((l) {
+          try {
+            final m = jsonDecode(l) as Map<String, dynamic>;
+            final res = m['result'];
+            return res is Map && res.containsKey('protocolVersion');
+          } on Object {
+            return false;
+          }
+        });
+        expect(hasInitResult, isTrue, reason: 'No initialize result observed');
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+    test(
       'gemini: list commands (jsonl) — emits empty available_commands_update',
       () async {
         final proc = await Process.start('dart', [
@@ -541,7 +640,7 @@ void main() {
           var proc = await Process.start('dart', [
             cliPath,
             '-a',
-            'gemini',
+            'claude-code',
             '-o',
             'jsonl',
             planPrompt,
@@ -609,9 +708,11 @@ void main() {
               .toList();
           var code = await proc.exitCode.timeout(const Duration(minutes: 3));
           expect(code, 0);
-          final hasDiffFrame = lines.any((l) =>
-              l.contains('"method":"session/update"') &&
-              (l.contains('"sessionUpdate":"diff"') || l.contains('```diff')));
+          final hasDiffFrame = lines.any(
+            (l) =>
+                l.contains('"method":"session/update"') &&
+                (l.contains('"sessionUpdate":"diff"') || l.contains('```diff')),
+          );
           expect(
             hasDiffFrame,
             isTrue,

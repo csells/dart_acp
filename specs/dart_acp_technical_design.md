@@ -254,6 +254,7 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
   - `--agent <name>` (`-a <name>`): selects an agent by key from `agent_servers`.  
   - `--output <mode>` (`-o`): `jsonl|json|text|simple` (json is an alias for jsonl).  
   - `--list-commands`: print available slash commands (AvailableCommand[]) without sending a prompt; waits for `available_commands_update`.  
+  - `--list-caps`: print agent capabilities from `initialize.result` (protocolVersion, authMethods, agentCapabilities) without sending a prompt. In JSONL mode, rely on the mirrored `initialize` frames; in text mode, a concise summary is printed.  
   - `--yolo`: enables read‑everywhere and write capability (writes still confined to CWD).  
   - `--write`: enables write capability (still confined to CWD).  
   - `--resume <id>` / `--save-session <path>`: session resume helpers.  
@@ -386,6 +387,7 @@ dart example/main.dart [options] [--] [prompt]
 
 - `-a, --agent <name>`: Selects an agent by key from `settings.json` (script directory) → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
 - `-o, --output <mode>`: One of `jsonl|json|text|simple` (default: `text`). `json` is an alias for `jsonl`. In `jsonl`/`json` modes, all protocol frames are mirrored to stdout and no human text is printed.
+- `--list-caps`: Prints capabilities reported by the agent during `initialize` (protocolVersion, authMethods, agentCapabilities) and exits without creating a session. In `jsonl` mode, no extra lines are printed beyond the protocol frames.
 - `--yolo`: Enables read‑everywhere and write capability; writes remain confined to the CWD (outside‑workspace writes are denied with a descriptive error).
 - `--write`: Enables `fs.writeTextFile` capability (still confined to the CWD).
 - `--resume <sessionId>`: Calls `session/load` then sends the prompt.

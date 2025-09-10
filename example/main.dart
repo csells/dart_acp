@@ -116,7 +116,9 @@ Future<void> main(List<String> argv) async {
   final prompt = await _readPrompt(args);
   final listOnly =
       args.listCommands && (prompt == null || prompt.trim().isEmpty);
-  if (!listOnly && (prompt == null || prompt.trim().isEmpty)) {
+  if (!args.listCaps &&
+      !listOnly &&
+      (prompt == null || prompt.trim().isEmpty)) {
     stderr.writeln('Error: empty prompt');
     stderr.writeln('Tip: run with --help for usage.');
     exitCode = 2;
@@ -138,7 +140,20 @@ Future<void> main(List<String> argv) async {
 
   try {
     await client.start();
-    await client.initialize();
+    final init = await client.initialize();
+    // If capabilities requested, print and exit prior to creating a session.
+    if (args.listCaps) {
+      if (!args.output.isJsonLike) {
+        _printCapsText(
+          protocolVersion: init.protocolVersion,
+          authMethods: init.authMethods,
+          agentCapabilities: init.agentCapabilities,
+        );
+      }
+      await sigintSub.cancel();
+      await client.dispose();
+      exit(0);
+    }
     if (args.resumeSessionId != null) {
       _sessionId = args.resumeSessionId;
       await client.loadSession(sessionId: _sessionId!);
@@ -328,6 +343,7 @@ class _Args {
     this.yolo = false,
     this.write = false,
     this.listCommands = false,
+    this.listCaps = false,
     this.resumeSessionId,
     this.saveSessionPath,
     this.prompt,
@@ -340,6 +356,7 @@ class _Args {
     var yolo = false;
     var write = false;
     var listCommands = false;
+    var listCaps = false;
     String? resume;
     String? savePath;
     final rest = <String>[];
@@ -368,6 +385,8 @@ class _Args {
         write = true;
       } else if (a == '--list-commands') {
         listCommands = true;
+      } else if (a == '--list-caps') {
+        listCaps = true;
       } else if (a == '--resume') {
         if (i + 1 >= argv.length) {
           stderr.writeln('Error: --resume requires a sessionId');
@@ -403,6 +422,7 @@ class _Args {
       yolo: yolo,
       write: write,
       listCommands: listCommands,
+      listCaps: listCaps,
       resumeSessionId: resume,
       saveSessionPath: savePath,
       prompt: prompt,
@@ -415,6 +435,7 @@ class _Args {
   final bool yolo;
   final bool write;
   final bool listCommands;
+  final bool listCaps;
   final String? resumeSessionId;
   final String? saveSessionPath;
   final String? prompt;
@@ -456,6 +477,10 @@ void _printUsage() {
   );
   stdout.writeln('      --list-commands    Print available slash commands');
   stdout.writeln('                         (no prompt sent)');
+  stdout.writeln(
+    '      --list-caps        Print agent capabilities from initialize',
+  );
+  stdout.writeln('                         (no prompt sent)');
   stdout.writeln('      --resume <id>      Resume an existing');
   stdout.writeln('                         session (replay), then send');
   stdout.writeln('                         the prompt');
@@ -473,6 +498,59 @@ void _printUsage() {
   stdout.writeln(
     '  echo "List available commands" | dart example/main.dart -o jsonl',
   );
+}
+
+void _printCapsText({
+  required int protocolVersion,
+  List<Map<String, dynamic>>? authMethods,
+  Map<String, dynamic>? agentCapabilities,
+}) {
+  stdout.writeln('protocolVersion: $protocolVersion');
+  if (authMethods != null) {
+    stdout.writeln('authMethods:');
+    for (final m in authMethods) {
+      final id = m['id'] ?? '';
+      final name = m['name'] ?? '';
+      final desc = m['description'];
+      final descStr = (desc == null || desc.toString().isEmpty)
+          ? ''
+          : ' — $desc';
+      stdout.writeln('  - $id: $name$descStr');
+    }
+  }
+  if (agentCapabilities != null) {
+    stdout.writeln('agentCapabilities:');
+    _printMapPlain(agentCapabilities, indent: 2);
+  }
+}
+
+void _printMapPlain(Map<String, dynamic> map, {int indent = 0}) {
+  final pad = ' ' * indent;
+  final keys = map.keys.toList()..sort();
+  for (final k in keys) {
+    final v = map[k];
+    if (v is Map) {
+      stdout.writeln('$pad- $k:');
+      _printMapPlain(Map<String, dynamic>.from(v), indent: indent + 2);
+    } else if (v is List) {
+      stdout.writeln('$pad- $k:');
+      _printListPlain(v, indent: indent + 2);
+    } else {
+      stdout.writeln('$pad- $k: $v');
+    }
+  }
+}
+
+void _printListPlain(List list, {int indent = 0}) {
+  final pad = ' ' * indent;
+  for (final item in list) {
+    if (item is Map) {
+      stdout.writeln('$pad-');
+      _printMapPlain(Map<String, dynamic>.from(item), indent: indent + 2);
+    } else {
+      stdout.writeln('$pad- $item');
+    }
+  }
 }
 
 List<Map<String, dynamic>> _buildContentBlocks(
