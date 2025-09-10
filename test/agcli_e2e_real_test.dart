@@ -5,72 +5,80 @@ import 'package:test/test.dart';
 
 void main() {
   group('agcli e2e real adapters', tags: 'e2e', () {
-    test('gemini: list commands (jsonl) — may be empty', () async {
-      final proc = await Process.start('dart', [
-        'example/agcli.dart',
-        '-a',
-        'gemini',
-        '-o',
-        'jsonl',
-        '--list-commands',
-      ]);
-      // Close stdin immediately since we're not sending any input
-      await proc.stdin.close();
-      
-      // Collect output in background without waiting
-      final lines = <String>[];
-      proc.stdout
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen(lines.add);
-      final stderrBuffer = StringBuffer();
-      proc.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
-      
-      final code = await proc.exitCode.timeout(const Duration(seconds: 30));
-      expect(
-        code,
-        0,
-        reason: 'list-commands run failed. stderr= ${stderrBuffer.toString()}',
-      );
-      // Gemini may not emit available_commands_update; accept absence.
-    }, timeout: const Timeout(Duration(minutes: 2)));
+    test(
+      'gemini: list commands (jsonl) — may be empty',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '-a',
+          'gemini',
+          '-o',
+          'jsonl',
+          '--list-commands',
+        ]);
+        // Close stdin immediately since we're not sending any input
+        await proc.stdin.close();
 
-    test('gemini: list commands (text mode)', () async {
-      final proc = await Process.start('dart', [
-        'example/agcli.dart',
-        '-a',
-        'gemini',
-        '--list-commands',
-      ]);
-      // Close stdin immediately since we're not sending any input
-      await proc.stdin.close();
-      
-      final outBuffer = StringBuffer();
-      proc.stdout.transform(utf8.decoder).listen(outBuffer.write);
-      
-      final code = await proc.exitCode.timeout(const Duration(seconds: 30));
-      expect(code, 0);
-      // Gemini returns no commands, so output should be empty
-      expect(
-        outBuffer.toString().trim(),
-        isEmpty,
-        reason: 'Expected empty output for no commands',
-      );
-    }, timeout: const Timeout(Duration(minutes: 2)));
+        // Collect output in background without waiting
+        final lines = <String>[];
+        proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen(lines.add);
+        final stderrBuffer = StringBuffer();
+        proc.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
+
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(
+          code,
+          0,
+          reason: 'list-commands run failed. stderr= $stderrBuffer',
+        );
+        // Gemini may not emit available_commands_update; accept absence.
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'gemini: list commands (text mode)',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '-a',
+          'gemini',
+          '--list-commands',
+        ]);
+        // Close stdin immediately since we're not sending any input
+        await proc.stdin.close();
+
+        final outBuffer = StringBuffer();
+        proc.stdout.transform(utf8.decoder).listen(outBuffer.write);
+
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(code, 0);
+        // Gemini returns no commands, so output should be empty
+        expect(
+          outBuffer.toString().trim(),
+          isEmpty,
+          reason: 'Expected empty output for no commands',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
 
     test(
       'claude-code: list commands (jsonl)',
       () async {
         final proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'claude-code',
           '-o',
           'jsonl',
           '--list-commands',
         ]);
-      // Close stdin immediately since we're not sending any input
-      await proc.stdin.close();
+        // Close stdin immediately since we're not sending any input
+        await proc.stdin.close();
         final linesFuture = proc.stdout
             .transform(utf8.decoder)
             .transform(const LineSplitter())
@@ -97,7 +105,7 @@ void main() {
     );
     test('gemini: output text mode', () async {
       final proc = await Process.start('dart', [
-        'example/agcli.dart',
+        'example/main.dart',
         '-a',
         'gemini',
         'Quick check of text mode',
@@ -121,7 +129,7 @@ void main() {
 
     test('gemini: stdin prompt (jsonl)', () async {
       final proc = await Process.start('dart', [
-        'example/agcli.dart',
+        'example/main.dart',
         '-a',
         'gemini',
         '-o',
@@ -160,7 +168,7 @@ void main() {
       'claude-code: output simple mode',
       () async {
         final proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'claude-code',
           '-o',
@@ -195,7 +203,7 @@ void main() {
       'claude-code: stdin prompt (text)',
       () async {
         final proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'claude-code',
         ]);
@@ -230,7 +238,7 @@ void main() {
           final prompt =
               'Review @${f1.path} and @"${f2.path}" and @https://example.com/spec.txt';
           final proc = await Process.start('dart', [
-            'example/agcli.dart',
+            'example/main.dart',
             '-a',
             'gemini',
             '-o',
@@ -280,7 +288,7 @@ void main() {
       'claude-code: session/new includes mcpServers (jsonl)',
       () async {
         final proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'claude-code',
           '-o',
@@ -314,7 +322,7 @@ void main() {
         );
         try {
           var proc = await Process.start('dart', [
-            'example/agcli.dart',
+            'example/main.dart',
             '-a',
             'gemini',
             '--save-session',
@@ -339,7 +347,7 @@ void main() {
           expect(sidFile.existsSync(), isTrue);
           final sid = sidFile.readAsStringSync();
           proc = await Process.start('dart', [
-            'example/agcli.dart',
+            'example/main.dart',
             '-a',
             'gemini',
             '--resume',
@@ -367,7 +375,7 @@ void main() {
     );
     test('gemini: output jsonl responds', () async {
       final proc = await Process.start('dart', [
-        'example/agcli.dart',
+        'example/main.dart',
         '-a',
         'gemini',
         '-o',
@@ -404,15 +412,15 @@ void main() {
       'claude-code: output jsonl responds',
       () async {
         final proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'claude-code',
           '-o',
           'jsonl',
           'Hello from e2e',
         ]);
-      // Close stdin immediately since we're not sending any input
-      await proc.stdin.close();
+        // Close stdin immediately since we're not sending any input
+        await proc.stdin.close();
         final linesFuture = proc.stdout
             .transform(utf8.decoder)
             .transform(const LineSplitter())
@@ -453,7 +461,7 @@ void main() {
         );
         try {
           var proc = await Process.start('dart', [
-            'example/agcli.dart',
+            'example/main.dart',
             '-a',
             'claude-code',
             '--save-session',
@@ -478,7 +486,7 @@ void main() {
           expect(sidFile.existsSync(), isTrue);
           final sid = sidFile.readAsStringSync();
           proc = await Process.start('dart', [
-            'example/agcli.dart',
+            'example/main.dart',
             '-a',
             'claude-code',
             '--resume',
@@ -515,7 +523,7 @@ void main() {
             'Stream plan updates for each step as you go. '
             'Stop after presenting the plan; do not apply changes yet.';
         var proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'gemini',
           '-o',
@@ -536,7 +544,7 @@ void main() {
 
         // Text rendering check (claude-code)
         proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'claude-code',
           planPrompt,
@@ -557,7 +565,7 @@ void main() {
             'Propose changes to README.md adding a "How to Test" section. '
             'Do not apply changes; send only a diff.';
         var proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'claude-code',
           '-o',
@@ -578,7 +586,7 @@ void main() {
 
         // Text rendering check (gemini)
         proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'gemini',
           diffPrompt,
@@ -596,15 +604,15 @@ void main() {
       () async {
         // Ask to read a file to encourage fs/read_text_file
         final proc = await Process.start('dart', [
-          'example/agcli.dart',
+          'example/main.dart',
           '-a',
           'gemini',
           '-o',
           'jsonl',
           'Read README.md and summarize in one paragraph.',
         ]);
-      // Close stdin immediately since we're not sending any input
-      await proc.stdin.close();
+        // Close stdin immediately since we're not sending any input
+        await proc.stdin.close();
         final lines = await proc.stdout
             .transform(utf8.decoder)
             .transform(const LineSplitter())

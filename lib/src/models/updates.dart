@@ -29,7 +29,7 @@ class MessageDelta extends AcpUpdate {
 
   /// Content blocks comprising this delta.
   final List<Map<String, dynamic>> content;
-  
+
   /// Whether this is a thought chunk (vs a message chunk).
   final bool isThought;
 }

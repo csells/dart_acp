@@ -37,19 +37,19 @@ dart format --set-exit-if-changed .
 ### Running the Example CLI
 ```bash
 # Basic usage with default agent
-dart example/agcli.dart "Your prompt here"
+dart example/main.dart "Your prompt here"
 
 # Use a specific agent from settings.json
-dart example/agcli.dart -a gemini "Summarize README.md"
-dart example/agcli.dart -a claude-code "Analyze code"
+dart example/main.dart -a gemini "Summarize README.md"
+dart example/main.dart -a claude-code "Analyze code"
 
 # Different output modes
-dart example/agcli.dart -o jsonl "Your prompt"  # JSONL output
-dart example/agcli.dart -o simple "Your prompt"  # Simple text only
+dart example/main.dart -o jsonl "Your prompt"  # JSONL output
+dart example/main.dart -o simple "Your prompt"  # Simple text only
 
 # With permissions
-dart example/agcli.dart --write "Create a file"  # Enable write
-dart example/agcli.dart --yolo "Search system"   # Read everywhere + write
+dart example/main.dart --write "Create a file"  # Enable write
+dart example/main.dart --yolo "Search system"   # Read everywhere + write
 ```
 
 ## Architecture Overview

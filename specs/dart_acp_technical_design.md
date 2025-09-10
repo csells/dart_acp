@@ -21,7 +21,7 @@ This library enables Dart apps—and `dartantic_ai` via a small adapter—to tal
 ### 1.1 Library vs CLI
 
 - **Library (`dart_acp`)**: A reusable client providing transports, JSON‑RPC peer, session management, providers (FS, permissions, terminal), and a typed updates stream. It is UI‑agnostic and agent‑agnostic. The library does not read `settings.json`; callers must provide `workspaceRoot`, `agentCommand`, `agentArgs`, and `envOverrides` explicitly.
-- **Example CLI (`example/agcli.dart`)**: A minimal command‑line program demonstrating the library. The CLI resolves the agent via `settings.json` located next to the CLI (script directory), starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--jsonl/-j`.
+- **Example CLI (`example/main.dart`)**: A minimal command‑line program demonstrating the library. The CLI resolves the agent via `settings.json` located next to the CLI (script directory), starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--jsonl/-j`.
 
 ---
 
@@ -353,12 +353,12 @@ When `--jsonl`/`-j` is set:
 
 ## 17. Example CLI (Design & Usage)
 
-The example CLI in `example/agcli.dart` demonstrates how to use the `dart_acp` library from a terminal. It is intentionally minimal and intended as reference code, not a polished tool.
+The example CLI in `example/main.dart` demonstrates how to use the `dart_acp` library from a terminal. It is intentionally minimal and intended as reference code, not a polished tool.
 
 ### 17.1 Synopsis
 
 ```bash
-dart example/agcli.dart [options] [--] [prompt]
+dart example/main.dart [options] [--] [prompt]
 ```
 
 - If `prompt` is provided, it is sent as a single turn to the agent.  
@@ -377,7 +377,7 @@ dart example/agcli.dart [options] [--] [prompt]
 
 ### 17.3 Configuration (`settings.json` next to CLI)
 
-The CLI uses the schema in §8.1. The file must exist next to the CLI (the `example/` directory when running `dart example/agcli.dart`).
+The CLI uses the schema in §8.1. The file must exist next to the CLI (the `example/` directory when running `dart example/main.dart`).
 
 Example:
 
@@ -452,11 +452,11 @@ The CLI is prompt‑first: it doesn’t synthesize protocol frames beyond `--lis
 
 ```bash
 # With inline prompt and default (first) agent
-dart example/agcli.dart "Summarize README.md"
+dart example/main.dart "Summarize README.md"
 
 # Select agent explicitly and enable JSONL protocol mirroring
-dart example/agcli.dart -a my-agent -o jsonl "List available commands"
+dart example/main.dart -a my-agent -o jsonl "List available commands"
 
 # Read prompt from stdin
-echo "Refactor the following code…" | dart example/agcli.dart -o jsonl
+echo "Refactor the following code…" | dart example/main.dart -o jsonl
 ```
