@@ -1,5 +1,11 @@
 {
   "agent_servers": {
+    "echo": {
+      "command": "dart",
+      "args": [
+        "test/agents/echo_agent.dart"
+      ]
+    },
     "claude-code": {
       "command": "npx",
       "args": [
