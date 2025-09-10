@@ -5,11 +5,14 @@ import 'package:test/test.dart';
 
 void main() {
   group('agcli e2e real adapters', tags: 'e2e', () {
+    final settingsPath = File('test/test_settings.json').absolute.path;
     test(
       'claude-code: list caps (jsonl)',
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'claude-code',
           '-o',
@@ -44,6 +47,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'gemini',
           '-o',
@@ -77,6 +82,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'claude-code',
           '-o',
@@ -109,6 +116,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'gemini',
           '-o',
@@ -166,6 +175,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'gemini',
           '--list-commands',
@@ -192,6 +203,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'claude-code',
           '-o',
@@ -215,6 +228,8 @@ void main() {
     test('gemini: output text mode', () async {
       final proc = await Process.start('dart', [
         'example/main.dart',
+        '--settings',
+        settingsPath,
         '-a',
         'gemini',
         'Quick check of text mode',
@@ -239,6 +254,8 @@ void main() {
     test('gemini: stdin prompt (jsonl)', () async {
       final proc = await Process.start('dart', [
         'example/main.dart',
+        '--settings',
+        settingsPath,
         '-a',
         'gemini',
         '-o',
@@ -278,6 +295,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'claude-code',
           '-o',
@@ -313,6 +332,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'claude-code',
         ]);
@@ -348,6 +369,8 @@ void main() {
               'Review @${f1.path} and @"${f2.path}" and @https://example.com/spec.txt';
           final proc = await Process.start('dart', [
             'example/main.dart',
+            '--settings',
+            settingsPath,
             '-a',
             'gemini',
             '-o',
@@ -398,6 +421,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'claude-code',
           '-o',
@@ -432,6 +457,8 @@ void main() {
         try {
           var proc = await Process.start('dart', [
             'example/main.dart',
+            '--settings',
+            settingsPath,
             '-a',
             'gemini',
             '--save-session',
@@ -457,6 +484,8 @@ void main() {
           final sid = sidFile.readAsStringSync();
           proc = await Process.start('dart', [
             'example/main.dart',
+            '--settings',
+            settingsPath,
             '-a',
             'gemini',
             '--resume',
@@ -485,6 +514,8 @@ void main() {
     test('gemini: output jsonl responds', () async {
       final proc = await Process.start('dart', [
         'example/main.dart',
+        '--settings',
+        settingsPath,
         '-a',
         'gemini',
         '-o',
@@ -522,6 +553,8 @@ void main() {
       () async {
         final proc = await Process.start('dart', [
           'example/main.dart',
+          '--settings',
+          settingsPath,
           '-a',
           'claude-code',
           '-o',
@@ -571,6 +604,8 @@ void main() {
         try {
           var proc = await Process.start('dart', [
             'example/main.dart',
+            '--settings',
+            settingsPath,
             '-a',
             'claude-code',
             '--save-session',
@@ -596,6 +631,8 @@ void main() {
           final sid = sidFile.readAsStringSync();
           proc = await Process.start('dart', [
             'example/main.dart',
+            '--settings',
+            settingsPath,
             '-a',
             'claude-code',
             '--resume',
@@ -639,6 +676,8 @@ void main() {
               'Stop after presenting the plan; do not apply changes yet.';
           var proc = await Process.start('dart', [
             cliPath,
+            '--settings',
+            settingsPath,
             '-a',
             'claude-code',
             '-o',
@@ -664,6 +703,8 @@ void main() {
           // Text rendering check (claude-code)
           proc = await Process.start('dart', [
             cliPath,
+            '--settings',
+            settingsPath,
             '-a',
             'claude-code',
             planPrompt,
@@ -696,6 +737,8 @@ void main() {
               'Do not apply changes; send only a diff.';
           var proc = await Process.start('dart', [
             cliPath,
+            '--settings',
+            settingsPath,
             '-a',
             'claude-code',
             '-o',
@@ -722,6 +765,8 @@ void main() {
           // Text rendering check (gemini)
           proc = await Process.start('dart', [
             cliPath,
+            '--settings',
+            settingsPath,
             '-a',
             'gemini',
             diffPrompt,
@@ -752,6 +797,8 @@ void main() {
           final cliPath = File('example/main.dart').absolute.path;
           final proc = await Process.start('dart', [
             cliPath,
+            '--settings',
+            settingsPath,
             '-a',
             'gemini',
             '-o',

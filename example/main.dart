@@ -20,7 +20,11 @@ Future<void> main(List<String> argv) async {
   // Load settings.json next to this CLI (script directory)
   Settings settings;
   try {
-    settings = await Settings.loadFromScriptDir();
+    if (args.settingsPath != null && args.settingsPath!.isNotEmpty) {
+      settings = await Settings.loadFromFile(args.settingsPath!);
+    } else {
+      settings = await Settings.loadFromScriptDir();
+    }
   } on Object catch (e) {
     stderr.writeln('Error: $e');
     stderr.writeln('Tip: run with --help for usage.');
@@ -339,6 +343,7 @@ class _Args {
   _Args({
     required this.output,
     required this.help,
+    this.settingsPath,
     this.agentName,
     this.yolo = false,
     this.write = false,
@@ -351,6 +356,7 @@ class _Args {
 
   factory _Args.parse(List<String> argv) {
     String? agent;
+    String? settingsPath;
     var output = OutputMode.text;
     var help = false;
     var yolo = false;
@@ -371,6 +377,13 @@ class _Args {
           exit(2);
         }
         agent = argv[++i];
+      } else if (a == '--settings') {
+        if (i + 1 >= argv.length) {
+          stderr.writeln('Error: --settings requires a path');
+          _printUsage();
+          exit(2);
+        }
+        settingsPath = argv[++i];
       } else if (a == '-o' || a == '--output') {
         if (i + 1 >= argv.length) {
           stderr.writeln('Error: --output requires a value');
@@ -419,6 +432,7 @@ class _Args {
       agentName: agent,
       output: output,
       help: help,
+      settingsPath: settingsPath,
       yolo: yolo,
       write: write,
       listCommands: listCommands,
@@ -430,6 +444,7 @@ class _Args {
   }
 
   final String? agentName;
+  final String? settingsPath;
   final OutputMode output;
   final bool help;
   final bool yolo;
@@ -469,6 +484,9 @@ void _printUsage() {
   stdout.writeln('  -o, --output <mode>    Output mode:');
   stdout.writeln('                         jsonl|json|text|simple');
   stdout.writeln('                         (default: text)');
+  stdout.writeln(
+    '      --settings <path>  Use a specific settings.json (overrides default)',
+  );
   stdout.writeln('      --yolo             Enable read-everywhere and');
   stdout.writeln('                         write-enabled (writes still');
   stdout.writeln('                         confined to CWD)');

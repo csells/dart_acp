@@ -12,9 +12,9 @@ void main() {
     late Settings settings;
 
     setUpAll(() async {
-      // Read example/settings.json from the CLI folder so the tests pick up
-      // your local agent configuration and environment.
-      settings = await Settings.loadFromFile('example/settings.json');
+      // Read test-specific settings.json so tests don't depend on default CLI
+      // settings.
+      settings = await Settings.loadFromFile('test/test_settings.json');
     });
 
     Future<void> runClient({
@@ -97,6 +97,37 @@ void main() {
     }
 
     // (No-op helper section)
+
+    test(
+      'echo agent responds to prompt',
+      () async {
+        await runClient(
+          agentKey: 'echo',
+          prompt: 'Hello from e2e',
+          onUpdates: (updates) {
+            // Check we got message deltas
+            final messageDeltas = updates.whereType<MessageDelta>().toList();
+            expect(
+              messageDeltas.isNotEmpty,
+              isTrue,
+              reason: 'No assistant delta observed',
+            );
+            
+            // Verify the echo response
+            final fullText = messageDeltas
+                .expand((d) => d.content)
+                .where((c) => c['type'] == 'text')
+                .map((c) => c['text'] as String)
+                .join();
+            expect(fullText, equals('Echo: Hello from e2e'));
+            
+            // Check for completion
+            expect(updates.whereType<TurnEnded>().isNotEmpty, isTrue);
+          },
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
 
     test(
       'gemini responds to prompt (AcpClient)',
@@ -190,7 +221,7 @@ void main() {
         try {
           File('${dir.path}/README.md').writeAsStringSync('# Test README');
           await runClient(
-            agentKey: 'gemini',
+            agentKey: 'claude-code',
             prompt:
                 'Propose changes to README.md adding a "How to Test" section.'
                 ' Do not apply changes; send only a diff.',

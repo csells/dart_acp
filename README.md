@@ -36,6 +36,7 @@ Usage: dart example/main.dart [options] [--] [prompt]
 
 Options:
   -a, --agent <name>     Select agent from settings.json next to this CLI
+      --settings <path>  Use a specific settings.json (overrides default next to CLI)
   -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)
       --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)
       --write            Enable write capability (still confined to CWD)
@@ -98,6 +99,7 @@ Examples:
 - `-a, --agent <name>` selects an entry from `agent_servers` in `example/settings.json`.
 - Default is the first listed agent if `-a` is omitted.
   - Examples: `-a gemini`, `-a claude-code`.
+- `--settings <path>` overrides the default `example/settings.json` (useful for CI/tests).
 
 ### Read / Write Permissions
 - `--write` enables write capability (writes remain confined to CWD).
@@ -383,6 +385,8 @@ To run only e2e tests:
 ```bash
 dart test --tags e2e
 ```
+
+The e2e tests use a test-specific settings file: `test/test_settings.json`. The tests pass this file to the CLI via `--settings` so they don’t depend on your default `example/settings.json`.
 
 To run a specific test file:
 
