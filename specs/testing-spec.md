@@ -41,6 +41,7 @@ E2E tests run against real ACP adapters/configurations defined in `test/test_set
 - Adapter capability gating: Use `test/helpers/adapter_caps.dart` to list initialize results via the CLI and skip tests only for features that are actually negotiated at initialize (e.g., `session/load`).
   - Use `skipIfMissingAll(agent, [patterns], name)` for initialize‑time features only.
   - Do not gate runtime behaviors (plans, diffs, available commands, terminal content) on initialize capabilities; assert based on observed `session/update` instead.
+  - Terminal runtime signal: use `skipIfNoRuntimeTerminal(agent)` (helper probes once in JSONL mode and caches the result) to skip terminal tests when runtime terminal content is not observed.
 - Failure policy: E2E tests fail loudly. Do not mask JSON parsing issues or network/process errors. If an output line cannot be parsed as JSON when the test expects JSON, the test should fail.
 - Cleanup: When using temporary directories, check existence before deleting in `addTearDown` (avoid try/catch in assertions path).
 
@@ -62,6 +63,7 @@ E2E tests run against real ACP adapters/configurations defined in `test/test_set
   - `--list-commands` (jsonl/text)
   - Text output path with a simple prompt
   - Strict JSONL parsing (no try/catch) for JSON modes
+  - Terminal: text mode markers and JSONL terminal content (skip via `skipIfNoRuntimeTerminal` if unsupported)
 
 ## Unit Tests
 
@@ -124,6 +126,11 @@ Unit tests run quickly, cover logic in isolation, and may use mocks.
   - Only gate tests for features negotiated at initialize (e.g., `session/load`).
   - Do not gate runtime features (plans, diffs, available commands, terminal content) on initialize data; assert on observed behavior.
   - Keep capability pattern strings simple and lower‑case (helper matches keys recursively) when you do gate by initialize.
+  - Terminal runtime signal: prefer `skipIfNoRuntimeTerminal(agent)` rather than ad‑hoc checks.
+  
+ - Fresh client instances:
+   - Create a new `AcpClient` for each test and dispose it via `addTearDown`.
+   - Do not cache or reuse `AcpClient` across tests; they keep session state and buffers.
 - Timeouts:
   - E2E tests have explicit `Timeout` annotations tuned per adapter.
   - Keep unit tests fast; avoid arbitrary sleeps.

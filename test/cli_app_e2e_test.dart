@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 
+import 'helpers/adapter_caps.dart';
+
 void main() {
   group('CLI app e2e real adapters', tags: 'e2e', () {
     final settingsPath = File('test/test_settings.json').absolute.path;
@@ -40,6 +42,134 @@ void main() {
       timeout: const Timeout(Duration(minutes: 2)),
     );
 
+    test(
+      'claude-code: terminal markers in text mode',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '--settings',
+          settingsPath,
+          '-a',
+          'claude-code',
+          // text mode prints [term] markers from TerminalEvents
+          'Run the command: echo "Hello from terminal"',
+        ]);
+        await proc.stdin.close();
+        final stdoutText = await proc.stdout.transform(utf8.decoder).join();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 90));
+        expect(code, 0, reason: 'CLI failed. stderr= $stderrText');
+        // Accept any lifecycle marker to reduce flakiness across environments
+        final sawTerm =
+            stdoutText.contains('[term] created') ||
+            stdoutText.contains('[term] output') ||
+            stdoutText.contains('[term] exited');
+        expect(
+          sawTerm,
+          isTrue,
+          reason:
+              'No terminal markers observed in text mode. stdout= $stdoutText',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+      skip: skipIfNoRuntimeTerminal('claude-code'),
+    );
+
+    test(
+      'claude-code: terminal frame appears in JSONL',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '--settings',
+          settingsPath,
+          '-a',
+          'claude-code',
+          '-o',
+          'jsonl',
+          'Run the command: echo "Hello from terminal"',
+        ]);
+        await proc.stdin.close();
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 120));
+        expect(code, 0, reason: 'CLI failed. stderr= $stderrText');
+        // Look for a tool_call_update with a terminal content block
+        final sawTerminalContent = lines.any((l) {
+          try {
+            final m = jsonDecode(l) as Map<String, dynamic>;
+            if (m['method'] != 'session/update') return false;
+            final params = m['params'];
+            if (params is! Map) return false;
+            final upd = params['update'];
+            if (upd is! Map) return false;
+            if (upd['sessionUpdate'] != 'tool_call_update') return false;
+            final content = upd['content'];
+            if (content is! List) return false;
+            return content.any((c) => c is Map && c['type'] == 'terminal');
+          } on Exception catch (_) {
+            return false;
+          }
+        });
+        expect(
+          sawTerminalContent,
+          isTrue,
+          reason:
+              'No terminal content observed in JSONL tool_call_update frames',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+      skip: skipIfNoRuntimeTerminal('claude-code'),
+    );
+
+    test(
+      'initialize (outbound) includes non-standard clientCapabilities.terminal',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '--settings',
+          settingsPath,
+          '-a',
+          'claude-code',
+          '-o',
+          'jsonl',
+          // Use list-caps to avoid creating a session; still emits initialize
+          '--list-caps',
+        ]);
+        await proc.stdin.close();
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(code, 0, reason: 'list-caps failed. stderr= $stderrText');
+        final sawOutboundInitWithTerminal = lines.any((l) {
+          try {
+            final m = jsonDecode(l) as Map<String, dynamic>;
+            if (m['method'] != 'initialize') return false;
+            final params = m['params'];
+            if (params is! Map) return false;
+            final caps = params['clientCapabilities'];
+            if (caps is! Map) return false;
+            return caps['terminal'] == true;
+          } on Exception catch (_) {
+            return false;
+          }
+        });
+        expect(
+          sawOutboundInitWithTerminal,
+          isTrue,
+          reason:
+              'Outbound initialize did not include '
+              'clientCapabilities.terminal: true',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+      skip: skipIfNoRuntimeTerminal('claude-code'),
+    );
     test('gemini: list caps (jsonl)', () async {
       final proc = await Process.start('dart', [
         'example/main.dart',

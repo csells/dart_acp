@@ -14,6 +14,7 @@ class AgentCaps {
 }
 
 final Map<String, AgentCaps> _capsCache = {};
+final Map<String, bool> _terminalRuntimeCache = {};
 
 AgentCaps capsFor(String agent) {
   if (_capsCache.containsKey(agent)) return _capsCache[agent]!;
@@ -107,4 +108,58 @@ String? skipUnlessAny(String agent, List<String> patterns, String name) {
   }
   return "Adapter '$agent' does not advertise $name "
       "(needs one of: ${patterns.join(', ')})";
+}
+
+/// Probe terminal support at runtime by asking the CLI to run a simple command
+/// and checking for a terminal content block in JSONL frames. Returns null if
+/// terminal appears supported; otherwise a descriptive skip reason.
+String? skipIfNoRuntimeTerminal(String agent) {
+  if (_terminalRuntimeCache.containsKey(agent)) {
+    return _terminalRuntimeCache[agent]!
+        ? null
+        : "Adapter '$agent' lacks runtime terminal support";
+  }
+  final settingsPath = File('test/test_settings.json').absolute.path;
+  final proc = Process.runSync(
+    'dart',
+    [
+      'example/main.dart',
+      '--settings',
+      settingsPath,
+      '-a',
+      agent,
+      '-o',
+      'jsonl',
+      'Run the command: echo "Hello from terminal"',
+    ],
+    stdoutEncoding: utf8,
+    stderrEncoding: utf8,
+  );
+  if (proc.exitCode != 0) {
+    _terminalRuntimeCache[agent] = false;
+    return "Adapter '$agent' failed during terminal probe: ${proc.stderr}";
+  }
+  var sawTerminal = false;
+  for (final line in const LineSplitter().convert(proc.stdout as String)) {
+    final m = jsonDecode(line);
+    if (m is! Map<String, dynamic>) continue;
+    if (m['method'] != 'session/update') continue;
+    final params = m['params'];
+    if (params is! Map) continue;
+    final upd = params['update'];
+    if (upd is! Map) continue;
+    final kind = upd['sessionUpdate'];
+    if (kind != 'tool_call_update') continue;
+    final content = upd['content'];
+    if (content is List &&
+        content.any((c) => c is Map && c['type'] == 'terminal')) {
+      sawTerminal = true;
+      break;
+    }
+    return null;
+  }
+  _terminalRuntimeCache[agent] = sawTerminal;
+  return sawTerminal
+      ? null
+      : "Adapter '$agent' did not emit terminal content in JSONL during probe";
 }

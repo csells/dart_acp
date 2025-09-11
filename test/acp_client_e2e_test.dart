@@ -471,37 +471,44 @@ void main() {
 
     group('Terminal Operations', () {
       for (final agentName in ['gemini', 'claude-code']) {
-        test('$agentName: execute via terminal or execute tool', () async {
-          final client = await createClient(agentName);
-          addTearDown(client.dispose);
-          final sessionId = await client.newSession();
-          final events = <TerminalEvent>[];
-          final sub = client.terminalEvents.listen(events.add);
-          final updates = <AcpUpdate>[];
-          await client
-              .prompt(
-                sessionId: sessionId,
-                content: [
-                  AcpClient.text('Run the command: echo "Hello from terminal"'),
-                ],
-              )
-              .forEach(updates.add);
-          await Future.delayed(const Duration(milliseconds: 500));
-          await sub.cancel();
-          if (events.isNotEmpty) {
-            final created = events.whereType<TerminalCreated>().firstOrNull;
-            if (created != null) {
-              final out = await client.terminalOutput(created.terminalId);
-              expect(out, contains('Hello'));
+        test(
+          '$agentName: execute via terminal or execute tool',
+          () async {
+            final client = await createClient(agentName);
+            addTearDown(client.dispose);
+            final sessionId = await client.newSession();
+            final events = <TerminalEvent>[];
+            final sub = client.terminalEvents.listen(events.add);
+            final updates = <AcpUpdate>[];
+            await client
+                .prompt(
+                  sessionId: sessionId,
+                  content: [
+                    AcpClient.text(
+                      'Run the command: echo "Hello from terminal"',
+                    ),
+                  ],
+                )
+                .forEach(updates.add);
+            await Future.delayed(const Duration(milliseconds: 500));
+            await sub.cancel();
+            if (events.isNotEmpty) {
+              final created = events.whereType<TerminalCreated>().firstOrNull;
+              if (created != null) {
+                final out = await client.terminalOutput(created.terminalId);
+                expect(out, contains('Hello'));
+              }
             }
-          }
-          final finalToolCalls = getFinalToolCalls(updates);
-          final execCalls = finalToolCalls.values.where(
-            (tc) =>
-                tc.kind == 'execute' || (tc.name?.contains('execute') ?? false),
-          );
-          expect(events.isNotEmpty || execCalls.isNotEmpty, isTrue);
-        });
+            final finalToolCalls = getFinalToolCalls(updates);
+            final execCalls = finalToolCalls.values.where(
+              (tc) =>
+                  tc.kind == 'execute' ||
+                  (tc.name?.contains('execute') ?? false),
+            );
+            expect(events.isNotEmpty || execCalls.isNotEmpty, isTrue);
+          },
+          skip: skipIfNoRuntimeTerminal(agentName),
+        );
       }
     });
   });

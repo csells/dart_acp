@@ -97,7 +97,7 @@ class DefaultTerminalProvider implements TerminalProvider {
         final shell = await _which('bash') ?? await _which('sh') ?? 'sh';
         final shellArgs = shell.endsWith('bash')
             ? ['-lc', command]
-            : ['-lc', command];
+            : ['-c', command];
         process = await Process.start(
           shell,
           shellArgs,
