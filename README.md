@@ -69,6 +69,25 @@ Examples:
 - jsonl/json: raw JSON‑RPC frames mirrored to stdout.
   - Example: `dart example/main.dart -a gemini -o json "Hello"`
 
+## Troubleshooting
+
+- Authentication required errors:
+  If you see a JSON‑RPC "authentication required" error from an agent, you’ll
+  need to authenticate for that agent before sending prompts. For example,
+  log out and log back in via the agent’s own CLI or UI, then retry. Ensure
+  any required API keys or environment variables are set in your shell
+  prior to launching the CLI.
+
+- Settings not found or invalid:
+  The CLI loads `settings.json` from the `example/` directory by default or
+  from `--settings <path>`. If parsing fails, fix the JSON shape or point to a
+  valid file. The `agent_servers` section must contain at least one entry with
+  a `command` string; optional `args` is an array of strings and `env` is a
+  map of string→string.
+
+- Empty prompt:
+  Provide a prompt as trailing args or via stdin (`echo "Hi" | dart example/main.dart`).
+
 ### File Mentions (@‑mentions)
 - Inline file/URL references in prompts:
   - Local: `@path`, `@"file with spaces.txt"`, absolute or relative; `~` expands.

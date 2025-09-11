@@ -1,7 +1,11 @@
 export 'src/acp_client.dart';
 export 'src/capabilities.dart';
 export 'src/config.dart';
+export 'src/models/command_types.dart';
+export 'src/models/content_types.dart';
+export 'src/models/diff_types.dart';
 export 'src/models/terminal_events.dart';
+export 'src/models/tool_types.dart';
 export 'src/models/types.dart';
 export 'src/models/updates.dart';
 export 'src/providers/fs_provider.dart';

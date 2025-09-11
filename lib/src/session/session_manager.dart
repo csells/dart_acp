@@ -202,15 +202,15 @@ class SessionManager {
           (update['availableCommands'] as List?)
               ?.cast<Map<String, dynamic>>() ??
           const [];
-      final u = AvailableCommandsUpdate(cmds);
+      final u = AvailableCommandsUpdate.fromRaw(cmds);
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'plan') {
-      final u = PlanUpdate(update);
+      final u = PlanUpdate.fromJson(update);
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'tool_call' || kind == 'tool_call_update') {
-      final u = ToolCallUpdate(update);
+      final u = ToolCallUpdate.fromJson(update);
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'user_message_chunk' ||
@@ -221,15 +221,15 @@ class SessionManager {
           ? <Map<String, dynamic>>[content]
           : (content as List?)?.cast<Map<String, dynamic>>() ?? const [];
       final role = kind == 'user_message_chunk' ? 'user' : 'assistant';
-      final u = MessageDelta(
+      final u = MessageDelta.fromRaw(
         role: role,
-        content: blocks,
+        rawContent: blocks,
         isThought: kind == 'agent_thought_chunk',
       );
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'diff') {
-      final u = DiffUpdate(update);
+      final u = DiffUpdate.fromJson(update);
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else {
@@ -244,19 +244,33 @@ class SessionManager {
     final path = req['path'] as String;
     final line = (req['line'] as num?)?.toInt();
     final limit = (req['limit'] as num?)?.toInt();
-    final content = await config.fsProvider.readTextFile(
-      path,
-      line: line,
-      limit: limit,
-    );
-    return {'content': content};
+    _log.fine('fs/read_text_file <- path=$path line=$line limit=$limit');
+    try {
+      final content = await config.fsProvider.readTextFile(
+        path,
+        line: line,
+        limit: limit,
+      );
+      _log.fine('fs/read_text_file -> ok path=$path bytes=${content.length}');
+      return {'content': content};
+    } catch (e) {
+      _log.warning('fs/read_text_file -> error path=$path: $e');
+      rethrow;
+    }
   }
 
   Future<Json?> _onWriteTextFile(Json req) async {
     final path = req['path'] as String;
     final content = req['content'] as String? ?? '';
-    await config.fsProvider.writeTextFile(path, content);
-    return null; // per schema null
+    _log.fine('fs/write_text_file <- path=$path bytes=${content.length}');
+    try {
+      await config.fsProvider.writeTextFile(path, content);
+      _log.fine('fs/write_text_file -> ok path=$path');
+      return null; // per schema null
+    } catch (e) {
+      _log.warning('fs/write_text_file -> error path=$path: $e');
+      rethrow;
+    }
   }
 
   Future<Json> _onRequestPermission(Json req) async {

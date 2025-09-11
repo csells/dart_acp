@@ -39,10 +39,12 @@ class DefaultFsProvider implements FsProvider {
     if (line == null && limit == null) return content;
 
     final lines = content.split('\n');
+    // Interpret line as 1-based starting line and limit as number of lines.
     if (line != null) {
-      final idx = line.clamp(1, lines.length) - 1;
-      final start = (idx - (limit ?? 1) + 1).clamp(0, lines.length);
-      final end = (idx + 1).clamp(0, lines.length);
+      final start = (line - 1).clamp(0, lines.length);
+      final end = limit == null
+          ? lines.length
+          : (start + limit).clamp(0, lines.length);
       return lines.sublist(start, end).join('\n');
     }
     // limit only: return first N lines

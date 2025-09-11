@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'capabilities.dart';
 import 'config.dart';
+import 'models/content_types.dart';
 import 'models/terminal_events.dart';
 import 'models/updates.dart';
 import 'rpc/peer.dart';
@@ -134,4 +135,25 @@ class AcpClient {
     'type': 'text',
     'text': text,
   };
+
+  /// Create a typed text content block.
+  static TextContent textContent(String text) => TextContent(text: text);
+
+  /// Create a typed image content block.
+  static ImageContent imageContent(String mimeType, String data) =>
+      ImageContent(mimeType: mimeType, data: data);
+
+  /// Create a typed resource content block.
+  static ResourceContent resourceContent(
+    String uri, {
+    String? title,
+    String? mimeType,
+  }) => ResourceContent(uri: uri, title: title, mimeType: mimeType);
+
+  /// Create a typed resource link content block (preferred).
+  static ResourceContent resourceLinkContent(
+    String uri, {
+    String? title,
+    String? mimeType,
+  }) => ResourceContent(uri: uri, title: title, mimeType: mimeType);
 }

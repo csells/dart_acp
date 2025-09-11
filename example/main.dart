@@ -3,14 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_acp/dart_acp.dart';
-import 'package:json_rpc_2/json_rpc_2.dart' as rpc;
 import 'package:mime/mime.dart' as mime;
 import 'package:path/path.dart' as p;
 
+import 'args.dart';
 import 'settings.dart';
 
 Future<void> main(List<String> argv) async {
-  final args = _Args.parse(argv);
+  final args = CliArgs.parse(argv);
   if (args.help) {
     _printUsage();
     return;
@@ -18,19 +18,9 @@ Future<void> main(List<String> argv) async {
   final cwd = Directory.current.path;
 
   // Load settings.json next to this CLI (script directory)
-  Settings settings;
-  try {
-    if (args.settingsPath != null && args.settingsPath!.isNotEmpty) {
-      settings = await Settings.loadFromFile(args.settingsPath!);
-    } else {
-      settings = await Settings.loadFromScriptDir();
-    }
-  } on Object catch (e) {
-    stderr.writeln('Error: $e');
-    stderr.writeln('Tip: run with --help for usage.');
-    exitCode = 2;
-    return;
-  }
+  final settings = (args.settingsPath != null && args.settingsPath!.isNotEmpty)
+      ? await Settings.loadFromFile(args.settingsPath!)
+      : await Settings.loadFromScriptDir();
 
   // Select agent
   final agentName = args.agentName ?? settings.agentServers.keys.first;
@@ -142,61 +132,29 @@ Future<void> main(List<String> argv) async {
     exit(130);
   });
 
-  try {
-    await client.start();
-    final init = await client.initialize();
-    // If capabilities requested, print and exit prior to creating a session.
-    if (args.listCaps) {
-      if (!args.output.isJsonLike) {
-        _printCapsText(
-          protocolVersion: init.protocolVersion,
-          authMethods: init.authMethods,
-          agentCapabilities: init.agentCapabilities,
-        );
-      }
-      await sigintSub.cancel();
-      await client.dispose();
-      exit(0);
-    }
-    if (args.resumeSessionId != null) {
-      _sessionId = args.resumeSessionId;
-      await client.loadSession(sessionId: _sessionId!);
-    } else {
-      _sessionId = await client.newSession();
-      if (args.saveSessionPath != null) {
-        try {
-          await File(args.saveSessionPath!).writeAsString(_sessionId!);
-        } on Exception catch (e) {
-          stderr.writeln('Warning: failed to save session id: $e');
-        }
-      }
-    }
-  } on rpc.RpcException catch (e) {
-    // Improve the auth-required error with selected agent context and guidance.
-    final message = e.message.toLowerCase();
-    if (e.code == -32000 &&
-        message.contains('auth') &&
-        message.contains('required')) {
-      stderr.writeln(
-        'JSON-RPC error -32000: Authentication required '
-        '(agent_server: $agentName -> ${agent.command}).',
+  await client.start();
+  final init = await client.initialize();
+  // If capabilities requested, print and exit prior to creating a session.
+  if (args.listCaps) {
+    if (!args.output.isJsonLike) {
+      _printCapsText(
+        protocolVersion: init.protocolVersion,
+        authMethods: init.authMethods,
+        agentCapabilities: init.agentCapabilities,
       );
-      stderr.writeln(
-        'Tip: try logging out, then logging back in for this agent, and retry.',
-      );
-    } else {
-      stderr.writeln('JSON-RPC error ${e.code}: ${e.message}');
     }
     await sigintSub.cancel();
     await client.dispose();
-    exitCode = 2;
-    return;
-  } on Object catch (e) {
-    stderr.writeln('Error: $e');
-    await sigintSub.cancel();
-    await client.dispose();
-    exitCode = 2;
-    return;
+    exit(0);
+  }
+  if (args.resumeSessionId != null) {
+    _sessionId = args.resumeSessionId;
+    await client.loadSession(sessionId: _sessionId!);
+  } else {
+    _sessionId = await client.newSession();
+    if (args.saveSessionPath != null) {
+      await File(args.saveSessionPath!).writeAsString(_sessionId!);
+    }
   }
 
   // Subscribe terminal events (text mode only)
@@ -228,8 +186,8 @@ Future<void> main(List<String> argv) async {
           final cmds = u.commands;
           if (cmds.isNotEmpty) {
             for (final c in cmds) {
-              final name = (c['name'] ?? c['title'] ?? '').toString();
-              final desc = (c['description'] ?? '').toString();
+              final name = c.name;
+              final desc = c.description ?? '';
               if (name.isEmpty) continue;
               if (desc.isEmpty) {
                 stdout.writeln('/$name');
@@ -306,8 +264,8 @@ Future<void> main(List<String> argv) async {
           continue;
         }
         final texts = u.content
-            .where((b) => b['type'] == 'text')
-            .map((b) => b['text'] as String)
+            .whereType<TextContent>()
+            .map((b) => b.text)
             .join();
         if (texts.isNotEmpty) stdout.writeln(texts);
       }
@@ -327,7 +285,7 @@ Future<void> main(List<String> argv) async {
   exit(0);
 }
 
-Future<String?> _readPrompt(_Args args) async {
+Future<String?> _readPrompt(CliArgs args) async {
   if (args.prompt != null) return args.prompt;
   if (!stdin.hasTerminal) {
     // Read entire stdin as UTF-8
@@ -338,140 +296,7 @@ Future<String?> _readPrompt(_Args args) async {
 
 String? _sessionId;
 
-class _Args {
-  // Unnamed constructor first (lint: sort_unnamed_constructors_first)
-  _Args({
-    required this.output,
-    required this.help,
-    this.settingsPath,
-    this.agentName,
-    this.yolo = false,
-    this.write = false,
-    this.listCommands = false,
-    this.listCaps = false,
-    this.resumeSessionId,
-    this.saveSessionPath,
-    this.prompt,
-  });
-
-  factory _Args.parse(List<String> argv) {
-    String? agent;
-    String? settingsPath;
-    var output = OutputMode.text;
-    var help = false;
-    var yolo = false;
-    var write = false;
-    var listCommands = false;
-    var listCaps = false;
-    String? resume;
-    String? savePath;
-    final rest = <String>[];
-    for (var i = 0; i < argv.length; i++) {
-      final a = argv[i];
-      if (a == '-h' || a == '--help') {
-        help = true;
-      } else if (a == '-a' || a == '--agent') {
-        if (i + 1 >= argv.length) {
-          stderr.writeln('Error: --agent requires a value');
-          _printUsage();
-          exit(2);
-        }
-        agent = argv[++i];
-      } else if (a == '--settings') {
-        if (i + 1 >= argv.length) {
-          stderr.writeln('Error: --settings requires a path');
-          _printUsage();
-          exit(2);
-        }
-        settingsPath = argv[++i];
-      } else if (a == '-o' || a == '--output') {
-        if (i + 1 >= argv.length) {
-          stderr.writeln('Error: --output requires a value');
-          _printUsage();
-          exit(2);
-        }
-        final mode = argv[++i];
-        output = parseOutputMode(mode);
-      } else if (a == '--yolo') {
-        yolo = true;
-      } else if (a == '--write') {
-        write = true;
-      } else if (a == '--list-commands') {
-        listCommands = true;
-      } else if (a == '--list-caps') {
-        listCaps = true;
-      } else if (a == '--resume') {
-        if (i + 1 >= argv.length) {
-          stderr.writeln('Error: --resume requires a sessionId');
-          _printUsage();
-          exit(2);
-        }
-        resume = argv[++i];
-      } else if (a == '--save-session') {
-        if (i + 1 >= argv.length) {
-          stderr.writeln('Error: --save-session requires a path');
-          _printUsage();
-          exit(2);
-        }
-        savePath = argv[++i];
-      } else if (a == '--') {
-        if (i + 1 < argv.length) {
-          rest.addAll(argv.sublist(i + 1));
-        }
-        break;
-      } else if (a.startsWith('-')) {
-        stderr.writeln('Error: unknown option: $a');
-        _printUsage();
-        exit(2);
-      } else {
-        rest.add(a);
-      }
-    }
-    final prompt = rest.isNotEmpty ? rest.join(' ') : null;
-    return _Args(
-      agentName: agent,
-      output: output,
-      help: help,
-      settingsPath: settingsPath,
-      yolo: yolo,
-      write: write,
-      listCommands: listCommands,
-      listCaps: listCaps,
-      resumeSessionId: resume,
-      saveSessionPath: savePath,
-      prompt: prompt,
-    );
-  }
-
-  final String? agentName;
-  final String? settingsPath;
-  final OutputMode output;
-  final bool help;
-  final bool yolo;
-  final bool write;
-  final bool listCommands;
-  final bool listCaps;
-  final String? resumeSessionId;
-  final String? saveSessionPath;
-  final String? prompt;
-}
-
-enum OutputMode { text, simple, jsonl }
-
-OutputMode parseOutputMode(String s) {
-  final v = s.toLowerCase().trim();
-  if (v == 'text') return OutputMode.text;
-  if (v == 'simple') return OutputMode.simple;
-  if (v == 'json' || v == 'jsonl') return OutputMode.jsonl;
-  stderr.writeln(
-    'Error: invalid output mode: $s (expected jsonl|json|text|simple)',
-  );
-  exit(2);
-}
-
-extension OutputModeX on OutputMode {
-  bool get isJsonLike => this == OutputMode.jsonl;
-}
+// Args/OutputMode are defined in args.dart
 
 void _printUsage() {
   // Print to stdout for --help

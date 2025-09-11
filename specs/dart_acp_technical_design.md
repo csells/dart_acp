@@ -292,6 +292,17 @@ When `--jsonl`/`-j` is set:
 - Supported forms: `@path`, `@"file with spaces.txt"`, `@https://example.com/x` (tilde `~` expands to `$HOME`).
 - Each link includes a best‑effort `mimeType` based on filename or URL.
 
+### 8.4 Content Attachment Policy
+
+- Preference: Always attach files and URIs as `resource_link` content blocks.
+- Avoid embedding (`type: "resource"`) to keep prompts small and portable. If
+  an agent requires bytes inline for a specific flow, hosts MAY opt in on a
+  case‑by‑case basis, but the library does not construct embedded resources by
+  default.
+- When agents need file contents, they SHOULD call the client FS methods
+  (`read_text_file`, `write_text_file`) within the session’s security
+  boundary.
+
 ---
 
 ## 9. Security & Privacy

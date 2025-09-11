@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_acp/dart_acp.dart';
+import 'package:path/path.dart' as path;
 import 'package:test/test.dart';
 
 import '../example/settings.dart';
+import 'helpers/adapter_caps.dart';
 
 void main() {
   group('AcpClient e2e real adapters', tags: 'e2e', () {
@@ -88,13 +90,14 @@ void main() {
       if (onJsonFrames != null) {
         final jsonFrames = <Map<String, dynamic>>[];
         for (final l in capturedOut.followedBy(capturedIn)) {
-          try {
-            jsonFrames.add(jsonDecode(l) as Map<String, dynamic>);
-          } on Object catch (_) {}
+          jsonFrames.add(jsonDecode(l) as Map<String, dynamic>);
         }
         onJsonFrames(jsonFrames);
       }
     }
+
+    // Helper to create a configured client for direct control in tests
+    // (createClient helper defined in consolidated group below)
 
     // (No-op helper section)
 
@@ -114,8 +117,8 @@ void main() {
           // Verify the echo response
           final fullText = messageDeltas
               .expand((d) => d.content)
-              .where((c) => c['type'] == 'text')
-              .map((c) => c['text'] as String)
+              .whereType<TextContent>()
+              .map((c) => c.text)
               .join();
           expect(fullText, equals('Echo: Hello from e2e'));
 
@@ -164,31 +167,6 @@ void main() {
     );
 
     test(
-      'list commands uses --list-commands (no prompt)',
-      () async {
-        // Use the CLI to request available commands without sending a prompt.
-        final proc = await Process.start('dart', [
-          'example/main.dart',
-          '-a',
-          'gemini',
-          '--list-commands',
-        ]);
-        // No prompt should be sent; close stdin immediately.
-        await proc.stdin.close();
-
-        final outBuffer = StringBuffer();
-        final errBuffer = StringBuffer();
-        proc.stdout.transform(utf8.decoder).listen(outBuffer.write);
-        proc.stderr.transform(utf8.decoder).listen(errBuffer.write);
-
-        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
-        // Allow zero or more commands; only assert successful exit.
-        expect(code, 0, reason: 'list-commands run failed. stderr= $errBuffer');
-      },
-      timeout: const Timeout(Duration(minutes: 2)),
-    );
-
-    test(
       'plan updates present when requested',
       () async {
         await runClient(
@@ -208,6 +186,7 @@ void main() {
         );
       },
       timeout: const Timeout(Duration(minutes: 3)),
+      skip: skipIfMissingAll('claude-code', ['plan'], 'plan updates'),
     );
 
     test(
@@ -228,9 +207,7 @@ void main() {
                 (u) =>
                     u is MessageDelta &&
                     u.content.any(
-                      (b) =>
-                          (b['type'] == 'text') &&
-                          (b['text'] as String).contains('```diff'),
+                      (b) => b is TextContent && b.text.contains('```diff'),
                     ),
               );
               expect(
@@ -241,12 +218,13 @@ void main() {
             },
           );
         } finally {
-          try {
+          if (dir.existsSync()) {
             await dir.delete(recursive: true);
-          } on Object catch (_) {}
+          }
         }
       },
       timeout: const Timeout(Duration(minutes: 2)),
+      skip: skipIfMissingAll('claude-code', ['diff'], 'diff updates'),
     );
 
     test(
@@ -275,12 +253,258 @@ void main() {
             },
           );
         } finally {
-          try {
+          if (dir.existsSync()) {
             await dir.delete(recursive: true);
-          } on Object catch (_) {}
+          }
         }
       },
       timeout: const Timeout(Duration(minutes: 3)),
     );
+  });
+
+  // Additional E2E coverage consolidated from comprehensive tests
+  group('AcpClient e2e consolidated', tags: 'e2e', () {
+    late Settings settings;
+    setUpAll(() async {
+      settings = await Settings.loadFromFile('test/test_settings.json');
+    });
+
+    Future<AcpClient> createClient(
+      String agentKey, {
+      String? workspaceRoot,
+      AcpCapabilities? capabilities,
+      PermissionProvider? permissionProvider,
+      TerminalProvider? terminalProvider,
+    }) async {
+      final agent = settings.agentServers[agentKey]!;
+      final client = AcpClient(
+        config: AcpConfig(
+          workspaceRoot: workspaceRoot ?? Directory.current.path,
+          agentCommand: agent.command,
+          agentArgs: agent.args,
+          envOverrides: agent.env,
+          capabilities:
+              capabilities ??
+              const AcpCapabilities(
+                fs: FsCapabilities(readTextFile: true, writeTextFile: true),
+              ),
+          permissionProvider:
+              permissionProvider ?? const DefaultPermissionProvider(),
+          terminalProvider: terminalProvider ?? DefaultTerminalProvider(),
+        ),
+      );
+      await client.start();
+      await client.initialize();
+      return client;
+    }
+
+    Map<String, ToolCall> getFinalToolCalls(List<AcpUpdate> updates) {
+      final toolCallsById = <String, ToolCall>{};
+      var emptyIdCounter = 0;
+      for (final update in updates.whereType<ToolCallUpdate>()) {
+        var id = update.toolCall.id;
+        if (id.isEmpty) {
+          id = '__empty_${emptyIdCounter++}';
+        }
+        toolCallsById[id] = update.toolCall;
+      }
+      return toolCallsById;
+    }
+
+    for (final agentName in ['gemini', 'claude-code']) {
+      test(
+        '$agentName: create/manage sessions and cancellation',
+        () async {
+          final client = await createClient(agentName);
+          addTearDown(client.dispose);
+          final sessionId = await client.newSession();
+          expect(sessionId, isNotEmpty);
+
+          // Prompt and ensure response completes
+          await client
+              .prompt(
+                sessionId: sessionId,
+                content: [AcpClient.text('What is 2+2?')],
+              )
+              .drain();
+
+          // Start another and cancel
+          final draining = client
+              .prompt(
+                sessionId: sessionId,
+                content: [AcpClient.text('Count to 1000000 slowly')],
+              )
+              .drain();
+          await Future.delayed(const Duration(milliseconds: 100));
+          await client.cancel(sessionId: sessionId);
+          await draining;
+        },
+        timeout: const Timeout(Duration(seconds: 60)),
+      );
+
+      test(
+        '$agentName: session replay via sessionUpdates',
+        () async {
+          final client = await createClient(agentName);
+          addTearDown(client.dispose);
+          final sessionId = await client.newSession();
+          await client
+              .prompt(sessionId: sessionId, content: [AcpClient.text('Hello')])
+              .drain();
+          final replayed = <AcpUpdate>[];
+          await for (final u in client.sessionUpdates(sessionId)) {
+            replayed.add(u);
+            if (u is TurnEnded) break;
+          }
+          expect(replayed.whereType<MessageDelta>(), isNotEmpty);
+        },
+        timeout: const Timeout(Duration(seconds: 60)),
+        skip: skipIfMissingAll(agentName, [
+          'loadsession',
+          'load_session',
+        ], 'session/load'),
+      );
+
+      test(
+        '$agentName: file read operations',
+        () async {
+          final dir = await Directory.systemTemp.createTemp('acp_read_');
+          addTearDown(() async {
+            if (dir.existsSync()) {
+              await dir.delete(recursive: true);
+            }
+          });
+          File(
+            path.join(dir.path, 'test.txt'),
+          ).writeAsStringSync('Hello from test file');
+          final client = await createClient(agentName, workspaceRoot: dir.path);
+          addTearDown(client.dispose);
+          final sessionId = await client.newSession();
+          final updates = <AcpUpdate>[];
+          await client
+              .prompt(
+                sessionId: sessionId,
+                content: [
+                  AcpClient.text('Read the file test.txt and summarize it'),
+                ],
+              )
+              .forEach(updates.add);
+          final finalToolCalls = getFinalToolCalls(updates);
+          expect(finalToolCalls, isNotEmpty);
+          final messages = updates
+              .whereType<MessageDelta>()
+              .expand((m) => m.content)
+              .whereType<TextContent>()
+              .map((t) => t.text)
+              .join()
+              .toLowerCase();
+          expect(messages, contains('hello'));
+        },
+        timeout: const Timeout(Duration(seconds: 60)),
+      );
+
+      test(
+        '$agentName: file write operations',
+        () async {
+          final dir = await Directory.systemTemp.createTemp('acp_write_');
+          addTearDown(() async {
+            if (dir.existsSync()) {
+              await dir.delete(recursive: true);
+            }
+          });
+          final client = await createClient(
+            agentName,
+            workspaceRoot: dir.path,
+            capabilities: const AcpCapabilities(
+              fs: FsCapabilities(readTextFile: true, writeTextFile: true),
+            ),
+          );
+          addTearDown(client.dispose);
+          final sessionId = await client.newSession();
+          final updates = <AcpUpdate>[];
+          await client
+              .prompt(
+                sessionId: sessionId,
+                content: [
+                  AcpClient.text(
+                    'Create a file output.txt with content "Test output"',
+                  ),
+                ],
+              )
+              .forEach(updates.add);
+          final finalToolCalls = getFinalToolCalls(updates);
+          final writeCalls = finalToolCalls.values.where(
+            (tc) =>
+                tc.kind == 'write' ||
+                tc.kind == 'edit' ||
+                (tc.name?.contains('write') ?? false),
+          );
+          expect(writeCalls.isNotEmpty, isTrue);
+        },
+        timeout: const Timeout(Duration(seconds: 60)),
+      );
+    }
+
+    test('invalid session id yields error', () async {
+      final client = await createClient('claude-code');
+      addTearDown(client.dispose);
+      final sessionId = await client.newSession();
+      final invalid = 'invalid-$sessionId-mod';
+      expect(
+        () => client
+            .prompt(sessionId: invalid, content: [AcpClient.text('Hello')])
+            .drain(),
+        throwsA(anything),
+      );
+    });
+
+    test('agent crash surfaces error', () async {
+      final crashing = AcpClient(
+        config: AcpConfig(
+          workspaceRoot: Directory.current.path,
+          agentCommand: 'false',
+          agentArgs: const [],
+        ),
+      );
+      addTearDown(crashing.dispose);
+      await crashing.start();
+      expect(crashing.initialize, throwsA(anything));
+    });
+
+    group('Terminal Operations', () {
+      for (final agentName in ['gemini', 'claude-code']) {
+        test('$agentName: execute via terminal or execute tool', () async {
+          final client = await createClient(agentName);
+          addTearDown(client.dispose);
+          final sessionId = await client.newSession();
+          final events = <TerminalEvent>[];
+          final sub = client.terminalEvents.listen(events.add);
+          final updates = <AcpUpdate>[];
+          await client
+              .prompt(
+                sessionId: sessionId,
+                content: [
+                  AcpClient.text('Run the command: echo "Hello from terminal"'),
+                ],
+              )
+              .forEach(updates.add);
+          await Future.delayed(const Duration(milliseconds: 500));
+          await sub.cancel();
+          if (events.isNotEmpty) {
+            final created = events.whereType<TerminalCreated>().firstOrNull;
+            if (created != null) {
+              final out = await client.terminalOutput(created.terminalId);
+              expect(out, contains('Hello'));
+            }
+          }
+          final finalToolCalls = getFinalToolCalls(updates);
+          final execCalls = finalToolCalls.values.where(
+            (tc) =>
+                tc.kind == 'execute' || (tc.name?.contains('execute') ?? false),
+          );
+          expect(events.isNotEmpty || execCalls.isNotEmpty, isTrue);
+        });
+      }
+    });
   });
 }

@@ -380,14 +380,19 @@ sequenceDiagram
 
 Content blocks
 - `text`: primary message content (Markdown suggested)
-- `resource` / `resource_link`: files or URIs
+- `resource_link`: files or URIs (preferred)
+- `resource`: embedded resource contents (use sparingly)
 - `image`/`audio`: multimodal content
 
 Client rendering
 - Clients SHOULD render Markdown and handle large, incremental updates
   gracefully.
-- Clients SHOULD convert resource URIs to clickable links with context preview
-  when possible.
+- Clients SHOULD prefer `resource_link` for all file/URI attachments and avoid
+  embedding via `resource` unless an agent explicitly requires inline bytes
+  (e.g., very small text or testing scenarios). Embedded payloads increase
+  message size and are less portable across clients.
+- Clients SHOULD convert resource links/URIs to clickable anchors with context
+  previews when possible.
 
 Zed example (excerpt): crates/acp_thread/src/acp_thread.rs
 ```rust
@@ -445,7 +450,7 @@ sequenceDiagram
 On the wire (happy path)
 - Client → Agent (prompt)
 ```json
-{"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"sessionId":"sess_abc123","prompt":[{"type":"text","text":"Summarize this file."},{"type":"resource","resource":{"uri":"file:///abs/path/README.md","mimeType":"text/markdown","text":"# Title\n..."}}]}}
+{"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"sessionId":"sess_abc123","prompt":[{"type":"text","text":"Summarize this file."},{"type":"resource_link","uri":"file:///abs/path/README.md","mimeType":"text/markdown"}]}}
 ```
 - Agent → Client (plan)
 ```json
@@ -474,6 +479,9 @@ Client should
 - Append streamed `session/update` content incrementally.
 - Treat `stopReason` as the authoritative end of the turn.
 - After sending `session/cancel`, optimistically mark pending tool calls as cancelled and resolve any outstanding permission prompts with `cancelled`.
+- Prefer `resource_link` over `resource` for file context. If an agent needs
+  contents, it can call `read_text_file`/`write_text_file` through the
+  client capability surface.
 Sources:
 - append():
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_thread/src/acp_thread.rs#L457
