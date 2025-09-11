@@ -147,6 +147,25 @@ sequenceDiagram
     end
 ```
 
+On the wire
+- Client → Agent (request)
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":true}}}
+```
+- Agent → Client (result, success)
+```json
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"embeddedContext":true,"image":true}},"authMethods":[{"id":"oauth","name":"Log in with Provider"},{"id":"api_key","name":"API Key"}]}}
+```
+- Agent → Client (error, version unsupported)
+```json
+{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Unsupported protocol version","data":{"minVersion":1}}}
+```
+
+Client should
+- Verify `result.protocolVersion >= minimum`; otherwise show a clear, actionable error.
+- Cache/remember `agentCapabilities` and `authMethods` for later flows.
+- If the agent later enforces auth, present auth choices and call `authenticate` before creating sessions.
+
 
 ## 4. Sessions
 
@@ -222,6 +241,37 @@ sequenceDiagram
     end
     A-->>C: result(null)
 ```
+
+On the wire (new)
+- Client → Agent
+```json
+{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/abs/path/project","mcpServers":[{"name":"filesystem","command":"/usr/local/bin/mcp-fs","args":["--stdio"],"env":[{"name":"FOO","value":"bar"}]}]}}
+```
+- Agent → Client
+```json
+{"jsonrpc":"2.0","id":2,"result":{"sessionId":"sess_abc123","modes":{"currentModeId":"code","availableModes":[{"id":"code","name":"Coding"},{"id":"edit","name":"Editing"}]}}}
+```
+
+On the wire (load)
+- Client → Agent
+```json
+{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"sess_abc123","cwd":"/abs/path/project","mcpServers":[{"name":"filesystem","command":"/usr/local/bin/mcp-fs","args":["--stdio"],"env":[]}]}}
+```
+- Agent → Client (replay via notifications)
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Hi!"}}}}
+```
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Hello!"}}}}
+```
+- Agent → Client (completion of load)
+```json
+{"jsonrpc":"2.0","id":3,"result":null}
+```
+
+Client should
+- Use absolute `cwd` and treat it as a security boundary for any FS operations routed to the client.
+- Do not call `session/load` unless advertised in `initialize`.
 
 
 ## 5. Prompt Turn & Streaming
@@ -374,6 +424,56 @@ impl ContentBlock {
     }
 }
 ```
+
+Diagram (prompt + streaming + cancellation)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as Agent
+    C->>A: session/prompt(sessionId, prompt[])
+    loop streaming
+      A-->>C: session/update(agent_message_chunk | plan | tool_call ...)
+    end
+    alt user cancels
+      C-->>A: session/cancel(sessionId)
+      A-->>C: session/prompt result(stopReason=cancelled)
+    else completes
+      A-->>C: session/prompt result(stopReason)
+    end
+```
+
+On the wire (happy path)
+- Client → Agent (prompt)
+```json
+{"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"sessionId":"sess_abc123","prompt":[{"type":"text","text":"Summarize this file."},{"type":"resource","resource":{"uri":"file:///abs/path/README.md","mimeType":"text/markdown","text":"# Title\n..."}}]}}
+```
+- Agent → Client (plan)
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"plan","title":"Summarize file","steps":[{"id":"s1","text":"Read file"},{"id":"s2","text":"Draft summary"}],"status":"in_progress"}}}
+```
+- Agent → Client (assistant text chunk)
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Let me read the file and summarize it..."}}}}
+```
+- Agent → Client (stop)
+```json
+{"jsonrpc":"2.0","id":4,"result":{"stopReason":"end_turn"}}
+```
+
+On the wire (cancellation)
+- Client → Agent (cancel notification)
+```json
+{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"sess_abc123"}}
+```
+- Agent → Client (prompt completed as cancelled)
+```json
+{"jsonrpc":"2.0","id":4,"result":{"stopReason":"cancelled"}}
+```
+
+Client should
+- Append streamed `session/update` content incrementally.
+- Treat `stopReason` as the authoritative end of the turn.
+- After sending `session/cancel`, optimistically mark pending tool calls as cancelled and resolve any outstanding permission prompts with `cancelled`.
 Sources:
 - append():
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_thread/src/acp_thread.rs#L457
@@ -383,6 +483,16 @@ Sources:
 Sources
 - Content: https://agentclientprotocol.com/protocol/content
 - Zed repo paths above
+
+On the wire
+- Agent → Client (replayed or live)
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Here is an update with a resource link: file:///abs/path/src/main.rs"}}}}
+```
+
+Client should
+- Render Markdown; coalesce successive text chunks for smooth UX.
+- Convert `resource_link` and `resource` to clickable anchors with previews where possible.
 
 
 ## 7. Tool Calls & Permissioning
@@ -528,6 +638,28 @@ Sources:
 - Writing Files:
   https://agentclientprotocol.com/protocol/file-system#writing-files
 
+On the wire (agent calls client FS)
+- Agent → Client (read)
+```json
+{"jsonrpc":"2.0","id":31,"method":"read_text_file","params":{"sessionId":"sess_abc123","path":"/abs/path/README.md","line":1,"limit":2000}}
+```
+- Client → Agent (read result)
+```json
+{"jsonrpc":"2.0","id":31,"result":{"content":"# README\n..."}}
+```
+- Agent → Client (write)
+```json
+{"jsonrpc":"2.0","id":32,"method":"write_text_file","params":{"sessionId":"sess_abc123","path":"/abs/path/CHANGELOG.md","content":"- Add feature X\n"}}
+```
+- Client → Agent (write result)
+```json
+{"jsonrpc":"2.0","id":32,"result":null}
+```
+
+Client should
+- Enforce `cwd` boundary; reject requests escaping the project root with a clear error.
+- For large files, respect `line`/`limit` and stream content via multiple reads if needed.
+
 Diagram (FS callbacks)
 ```mermaid
 sequenceDiagram
@@ -580,6 +712,36 @@ Sources:
 - terminal_output:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L632
 - Terminal: https://agentclientprotocol.com/protocol/terminal
+
+On the wire (agent uses client terminal)
+- Agent → Client (create)
+```json
+{"jsonrpc":"2.0","id":41,"method":"create_terminal","params":{"sessionId":"sess_abc123","command":"bash","args":["-lc","pytest"],"env":[],"cwd":"/abs/path/project","outputByteLimit":8192}}
+```
+- Client → Agent (created)
+```json
+{"jsonrpc":"2.0","id":41,"result":{"terminalId":"term_001"}}
+```
+- Agent → Client (get output)
+```json
+{"jsonrpc":"2.0","id":42,"method":"terminal_output","params":{"sessionId":"sess_abc123","terminalId":"term_001"}}
+```
+- Client → Agent (output)
+```json
+{"jsonrpc":"2.0","id":42,"result":{"stdout":"....","stderr":"","exitStatus":null}}
+```
+- Agent → Client (wait for exit)
+```json
+{"jsonrpc":"2.0","id":43,"method":"wait_for_terminal_exit","params":{"sessionId":"sess_abc123","terminalId":"term_001"}}
+```
+- Client → Agent (exited)
+```json
+{"jsonrpc":"2.0","id":43,"result":{"exitStatus":0}}
+```
+
+Client should
+- Expose terminal output to the UI incrementally; keep the buffer until released.
+- Honor `kill_terminal` and `release_terminal` and free resources.
 
 Diagram (terminal lifecycle)
 ```mermaid
@@ -651,6 +813,16 @@ sequenceDiagram
     A-->>C: session/update(CurrentModeUpdate)
 ```
 
+On the wire
+- Client → Agent (set)
+```json
+{"jsonrpc":"2.0","id":51,"method":"session/set_mode","params":{"sessionId":"sess_abc123","modeId":"edit"}}
+```
+- Agent → Client (notify current mode)
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"current_mode_update","currentModeId":"edit"}}}
+```
+
 
 ## 11. Authentication
 
@@ -691,6 +863,24 @@ Sources:
 - Schema (authenticate):
   https://agentclientprotocol.com/protocol/schema#authenticate
 
+On the wire
+- Client → Agent (authenticate)
+```json
+{"jsonrpc":"2.0","id":61,"method":"authenticate","params":{"methodId":"oauth"}}
+```
+- Agent → Client (success)
+```json
+{"jsonrpc":"2.0","id":61,"result":null}
+```
+- Agent → Client (error)
+```json
+{"jsonrpc":"2.0","id":61,"error":{"code":-32603,"message":"Auth failed","data":{"details":"Token expired"}}}
+```
+
+Client should
+- Retry `session/new` after successful auth.
+- Surface failures with actionable next steps (re-login, set API key, etc.).
+
 
 ## 12. Error Handling & Cancellations
 
@@ -717,6 +907,14 @@ fn cancel(&self, session_id: &acp::SessionId, cx: &mut App) {
 ```
 Source:
 - https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L411
+
+Common error codes (examples)
+- `AUTH_REQUIRED` (agent-specific mapping): show auth UI; reattempt after `authenticate`.
+- `INVALID_PARAMS` (JSON-RPC -32602): log + correct client bug; show actionable error.
+- `INTERNAL_ERROR` (JSON-RPC -32603): show agent-side failure; do not retry blindly.
+
+Client should
+- Return `stopReason: cancelled` for cancels rather than surfacing provider abort exceptions as errors.
 
 
 ## 13. Streaming, Concurrency, and Backpressure
