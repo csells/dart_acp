@@ -30,6 +30,36 @@ Sources
 - Overview: https://agentclientprotocol.com/overview/introduction
 - Architecture: https://agentclientprotocol.com/overview/architecture
 
+Zed example (excerpt): crates/agent_servers/src/acp.rs
+```rust
+// Launch the agent subprocess with piped stdio
+let mut child = util::command::new_smol_command(command.path);
+child
+    .args(command.args.iter().map(|arg| arg.as_str()))
+    .envs(command.env.iter().flatten())
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+if !is_remote { child.current_dir(root_dir); }
+let mut child = child.spawn()?;
+
+// Take stdio handles and log pid
+let stdout = child.stdout.take().context("Failed to take stdout")?;
+let stdin = child.stdin.take().context("Failed to take stdin")?;
+let stderr = child.stderr.take().context("Failed to take stderr")?;
+log::trace!("Spawned (pid: {})", child.id());
+
+// Ensure the child is killed when the connection drops
+impl Drop for AcpConnection {
+    fn drop(&mut self) { self.child.kill().log_err(); }
+}
+```
+Sources:
+- Spawn and pipe stdio:
+  https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L81
+- Kill on drop:
+  https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L193
+
 
 ## 2. Initialization & Capability Negotiation
 
@@ -78,7 +108,21 @@ if response.protocol_version < MINIMUM_SUPPORTED_VERSION { return Err(Unsupporte
 Sources:
 - Protocol Overview: https://agentclientprotocol.com/protocol/overview
 - Initialization: https://agentclientprotocol.com/protocol/initialization
-- Zed [acp.rs](https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L153)
+- Zed
+  [acp.rs](https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L153)
+
+Diagram
+```mermaid
+sequenceDiagram
+    participant C as Client (Editor)
+    participant A as Agent (Subprocess)
+    C->>A: initialize(protocolVersion, clientCapabilities)
+    A-->>C: result(protocolVersion, agentCapabilities, authMethods)
+    opt auth required
+      C->>A: authenticate(methodId)
+      A-->>C: result()
+    end
+```
 
 
 ## 3. Sessions
@@ -138,6 +182,22 @@ Sources:
 - Thread binding:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L312
 - Session Setup: https://agentclientprotocol.com/protocol/session-setup
+
+Diagram (new vs. load)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as Agent
+    Note over C,A: New session
+    C->>A: session/new(cwd, mcpServers)
+    A-->>C: {sessionId, modes?}
+    Note over C,A: Load session (if supported)
+    C->>A: session/load(sessionId, cwd, mcpServers)
+    loop replay conversation
+      A-->>C: session/update(...)
+    end
+    A-->>C: result(null)
+```
 
 
 ## 4. Prompt Turn & Streaming
@@ -217,6 +277,23 @@ Sources:
 - Cancellation:
   https://agentclientprotocol.com/protocol/prompt-turn#cancellation
 
+Diagram (prompt + streaming + cancellation)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as Agent
+    C->>A: session/prompt(sessionId, prompt[])
+    loop streaming
+      A-->>C: session/update(agent_message_chunk | plan | tool_call ...)
+    end
+    alt user cancels
+      C-->>A: session/cancel(sessionId)
+      A-->>C: session/prompt result(stopReason=cancelled)
+    else completes
+      A-->>C: session/prompt result(stopReason)
+    end
+```
+
 
 ## 5. Content & Resources
 
@@ -231,10 +308,46 @@ Client rendering
 - Clients SHOULD convert resource URIs to clickable links with context preview
   when possible.
 
-Zed examples (content fusion and rendering)
-- `crates/acp_thread/src/acp_thread.rs:576` (combines blocks, promotes
-  `resource_link`)
-- `crates/acp_thread/src/acp_thread.rs:618` (Markdown entity creation)
+Zed example (excerpt): crates/acp_thread/src/acp_thread.rs
+```rust
+impl ContentBlock {
+    pub fn append(&mut self, block: acp::ContentBlock, language_registry: &Arc<LanguageRegistry>, cx: &mut App) {
+        if matches!(self, ContentBlock::Empty) && let acp::ContentBlock::ResourceLink(resource_link) = block {
+            *self = ContentBlock::ResourceLink { resource_link };
+            return;
+        }
+        let new_content = self.block_string_contents(block);
+        match self {
+            ContentBlock::Empty => {
+                *self = Self::create_markdown_block(new_content, language_registry, cx);
+            }
+            ContentBlock::Markdown { markdown } => {
+                markdown.update(cx, |markdown, cx| markdown.append(&new_content, cx));
+            }
+            ContentBlock::ResourceLink { resource_link } => {
+                let existing_content = Self::resource_link_md(&resource_link.uri);
+                let combined = format!("{}\n{}", existing_content, new_content);
+                *self = Self::create_markdown_block(combined, language_registry, cx);
+            }
+        }
+    }
+
+    fn block_string_contents(&self, block: acp::ContentBlock) -> String {
+        match block {
+            acp::ContentBlock::Text(text_content) => text_content.text,
+            acp::ContentBlock::ResourceLink(resource_link) => Self::resource_link_md(&resource_link.uri),
+            acp::ContentBlock::Resource(acp::EmbeddedResource { resource: acp::EmbeddedResourceResource::TextResourceContents(acp::TextResourceContents { uri, .. }), .. }) => Self::resource_link_md(&uri),
+            acp::ContentBlock::Image(image) => Self::image_md(&image),
+            acp::ContentBlock::Audio(_) | acp::ContentBlock::Resource(_) => String::new(),
+        }
+    }
+}
+```
+Sources:
+- append():
+  https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_thread/src/acp_thread.rs#L457
+- block_string_contents():
+  https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_thread/src/acp_thread.rs#L499
 
 Sources
 - Content: https://agentclientprotocol.com/protocol/content
@@ -318,6 +431,19 @@ Source:
   https://agentclientprotocol.com/protocol/tool-calls#requesting-permission
 - Status: https://agentclientprotocol.com/protocol/tool-calls#status
 
+Diagram (tool call + permission)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as Agent
+    A-->>C: session/update(tool_call: Pending)
+    A->>C: session/request_permission(options)
+    C-->>A: outcome (allow/deny/cancelled)
+    A-->>C: session/update(tool_call: InProgress)
+    A-->>C: session/update(tool_call_update: content/diff/terminal)
+    A-->>C: session/update(tool_call: Completed, raw_output?)
+```
+
 
 ## 7. Filesystem Access (Client Capabilities)
 
@@ -360,6 +486,17 @@ Sources:
 - Writing Files:
   https://agentclientprotocol.com/protocol/file-system#writing-files
 
+Diagram (FS callbacks)
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant C as Client
+    A->>C: read_text_file(path, line?, limit?)
+    C-->>A: { content }
+    A->>C: write_text_file(path, content)
+    C-->>A: result()
+```
+
 
 ## 8. Terminal Capability (Optional but Recommended)
 
@@ -398,6 +535,22 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L632
 - Terminal: https://agentclientprotocol.com/protocol/terminal
 
+Diagram (terminal lifecycle)
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant C as Client
+    A->>C: create_terminal(cmd, args, env, cwd)
+    C-->>A: { terminal_id }
+    loop streaming
+      A-->>C: terminal_output(terminal_id)
+    end
+    A->>C: wait_for_terminal_exit(terminal_id)
+    C-->>A: { exit_status }
+    A->>C: kill/release_terminal(terminal_id)
+    C-->>A: result()
+```
+
 
 ## 9. Modes and Model Selection
 
@@ -408,6 +561,30 @@ Sources:
 - If model selection is supported, expose a picker UI to list and select models;
   persist per session.
 
+Zed example (excerpt): crates/agent_servers/src/acp.rs
+```rust
+// If a default mode is configured and available, set it and optimistically
+// update local state, reverting if the RPC fails.
+if let Some(default_mode) = default_mode {
+    if let Some(modes) = modes.as_ref() {
+        let mut modes_ref = modes.borrow_mut();
+        let has_mode = modes_ref.available_modes.iter().any(|mode| mode.id == default_mode);
+        if has_mode {
+            let initial_mode_id = modes_ref.current_mode_id.clone();
+            cx.spawn({
+                let default_mode = default_mode.clone();
+                let session_id = response.session_id.clone();
+                let modes = modes.clone();
+                async move |_| {
+                    let result = conn.set_session_mode(acp::SetSessionModeRequest { session_id, mode_id: default_mode }).await.log_err();
+                    if result.is_none() { modes.borrow_mut().current_mode_id = initial_mode_id; }
+                }
+            }).detach();
+            modes_ref.current_mode_id = default_mode;
+        }
+    }
+}
+```
 Sources:
 - set_session_mode (fallback):
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L277
@@ -415,6 +592,15 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_ui/src/acp/model_selector.rs#L20
 - Protocol Overview: https://agentclientprotocol.com/protocol/overview
 - Schema: https://agentclientprotocol.com/protocol/schema
+
+Diagram (mode updates)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as Agent
+    C->>A: set_session_mode(mode_id)
+    A-->>C: session/update(CurrentModeUpdate)
+```
 
 
 ## 10. Authentication
@@ -424,6 +610,24 @@ Sources:
 - UX: Prefer browser‑based auth where available; store API keys securely; keep
   credentials out of JSON‑RPC logs.
 
+Zed examples (excerpts):
+```rust
+// Send authenticate request
+fn authenticate(&self, method_id: acp::AuthMethodId, cx: &mut App) -> Task<Result<()>> {
+    let conn = self.connection.clone();
+    cx.foreground_executor().spawn(async move {
+        let result = conn.authenticate(acp::AuthenticateRequest { method_id: method_id.clone() }).await?;
+        Ok(result)
+    })
+}
+
+// Error used to drive UX when auth is required
+#[derive(Debug)]
+pub struct AuthRequired {
+    pub description: Option<String>,
+    pub provider_id: Option<LanguageModelProviderId>,
+}
+```
 Sources:
 - authenticate wiring:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L343
@@ -445,6 +649,20 @@ Sources:
 - https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L398
 - Cancellation:
   https://agentclientprotocol.com/protocol/prompt-turn#cancellation
+
+Zed example (excerpt): crates/agent_servers/src/acp.rs
+```rust
+fn cancel(&self, session_id: &acp::SessionId, cx: &mut App) {
+    if let Some(session) = self.sessions.borrow_mut().get_mut(session_id) {
+        session.suppress_abort_err = true;
+    }
+    let conn = self.connection.clone();
+    let params = acp::CancelNotification { session_id: session_id.clone() };
+    cx.foreground_executor().spawn(async move { conn.cancel(params).await }).detach();
+}
+```
+Source:
+- https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L411
 
 
 ## 12. Streaming, Concurrency, and Backpressure
@@ -582,61 +800,13 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_thread/src/acp_thread.rs#L984
 
 
-## 18. Sequence Diagrams
+## 18. Implementation Notes (non‑normative)
 
-Initialization
-```mermaid
-sequenceDiagram
-    participant C as Client (Editor)
-    participant A as Agent (Subprocess)
-    C->>A: initialize(protocolVersion, clientCapabilities)
-    A-->>C: result(protocolVersion, agentCapabilities, authMethods)
-    opt auth required
-      C->>A: authenticate(methodId)
-      A-->>C: result()
-    end
-```
-
-Session + Prompt Turn + Cancellation
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant A as Agent
-    C->>A: session/new(cwd, mcpServers)
-    A-->>C: {sessionId, modes?}
-    C->>A: session/prompt(sessionId, prompt[])
-    loop streaming
-      A-->>C: session/update(agent_message_chunk | plan | tool_call...)
-    end
-    alt user cancels
-      C-->>A: session/cancel(sessionId)
-      A-->>C: session/prompt result(stopReason=cancelled)
-    else completes
-      A-->>C: session/prompt result(stopReason)
-    end
-```
-
-Tool Call + Permission + Terminal
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant A as Agent
-    A-->>C: session/update(tool_call: Pending)
-    A->>C: session/request_permission(options)
-    C-->>A: selected outcome (allow/deny/cancelled)
-    A-->>C: session/update(tool_call: InProgress)
-    A-->>C: session/update(tool_call_update: Terminal output)
-    A-->>C: session/update(tool_call: Completed, content/diff, raw_output?)
-```
-
-
-## 19. Implementation Notes (non‑normative)
-
-- Stdio transport: `LineSplitter` for inbound frames; `stdout.writeln` for
-  outbound; keep stderr for logs.
-- Streams: Use `StreamChannel<String>` and `StreamController.broadcast()`;
-  consider `pause`/`resume` for backpressure; avoid tight loops, add small
-  `await` yields when batching updates.
+- Dart-specific: Stdio transport: `LineSplitter` for inbound frames;
+  `stdout.writeln` for outbound; keep stderr for logs.
+- Dart-specific: Streams: Use `StreamChannel<String>` and
+  `StreamController.broadcast()`; consider `pause`/`resume` for backpressure;
+  avoid tight loops, add small `await` yields when batching updates.
 - Cancellation: Implement idempotent `cancel` that resolves any pending
   permission interaction and surfaces `StopReason::Cancelled` in the prompt
   response path.
@@ -644,7 +814,7 @@ sequenceDiagram
   payloads.
 
 
-## 20. References
+## 19. References
 
 ACP specification
 - Overview: https://agentclientprotocol.com/overview/introduction

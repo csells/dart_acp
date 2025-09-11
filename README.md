@@ -4,7 +4,12 @@ This repository contains a Dart ACP client library that talks to an ACP agent
 over stdio JSON‑RPC. It handles transport, session lifecycle, routing updates,
 workspace jail, permissions, and optional terminal provider.
 
-See `specs/` for details.
+### Specs
+
+- `specs/acp-client-best-practices.md`: Language-agnostic ACP client best practices with Dart notes—covers initialization, sessions, streaming/cancellation, tool calls/permissions, FS/terminal, security, telemetry, testing, and includes diagrams and a conformance checklist (with Zed code references).
+- `specs/dart_acp_technical_design.md`: Technical design of the Dart ACP client and example CLI—goals, architecture, lifecycle flows, providers (FS, permissions, terminal), configuration, testing strategy, and open questions.
+- `specs/architecture-best-practices.md`: General architecture guidelines for this repo—DRY, separation of concerns, SRP, low coupling/high cohesion, observability/testability, security by design, and simplicity.
+- `specs/acp-llms.txt`: Local snapshot of the ACP specification website for offline reference—initialization, session setup, prompt turn, tool calls, file system, terminal, and schema.
 
 ### Features
 - Stdio transport (JSON‑RPC over stdin/stdout between client and agent).

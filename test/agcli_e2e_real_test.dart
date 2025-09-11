@@ -754,15 +754,15 @@ void main() {
               .toList();
           var code = await proc.exitCode.timeout(const Duration(minutes: 2));
           expect(code, 0);
-          final hasDiffFrame = lines.any(
-            (l) =>
-                l.contains('"method":"session/update"') &&
-                (l.contains('"sessionUpdate":"diff"') || l.contains('```diff')),
+          // Check for diff in message text
+          // (agents embed diffs in text, not as structured updates)
+          final hasDiffInText = lines.any(
+            (l) => l.contains('```diff'),
           );
           expect(
-            hasDiffFrame,
+            hasDiffInText,
             isTrue,
-            reason: 'claude-code: No diff session/update observed',
+            reason: 'claude-code: No diff code block found in JSONL output',
           );
 
           // Text rendering check (gemini)
