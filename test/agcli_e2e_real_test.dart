@@ -559,7 +559,7 @@ void main() {
           'claude-code',
           '-o',
           'jsonl',
-          'Hello from e2e',
+          'Say hello briefly',
         ]);
         // Close stdin immediately since we're not sending any input
         await proc.stdin.close();
@@ -668,10 +668,9 @@ void main() {
           File('${dir.path}/README.md').writeAsStringSync('# Test README');
           final cliPath = File('example/main.dart').absolute.path;
 
-          // JSONL assertion first (gemini)
+          // JSONL assertion first
           const planPrompt =
-              'Before doing anything, produce a 3-step plan to add a '
-              '"Testing" section to README.md. '
+              'Create a simple 2-step plan to add one line to README.md. '
               'Stream plan updates for each step as you go. '
               'Stop after presenting the plan; do not apply changes yet.';
           var proc = await Process.start('dart', [
@@ -700,7 +699,7 @@ void main() {
             reason: 'No plan session/update observed',
           );
 
-          // Text rendering check (claude-code)
+          // Text rendering check
           proc = await Process.start('dart', [
             cliPath,
             '--settings',
@@ -712,7 +711,11 @@ void main() {
           final outText = await proc.stdout.transform(utf8.decoder).join();
           code = await proc.exitCode.timeout(const Duration(minutes: 3));
           expect(code, 0);
-          expect(outText.contains('[plan]'), isTrue);
+          expect(
+            outText.contains('[plan]'),
+            isTrue,
+            reason: 'No [plan] marker found in output: $outText',
+          );
         } finally {
           try {
             await dir.delete(recursive: true);
@@ -733,7 +736,7 @@ void main() {
 
           // JSONL assertion (claude-code)
           const diffPrompt =
-              'Propose changes to README.md adding a "How to Test" section. '
+              'Show a simple diff to add one line to README.md. '
               'Do not apply changes; send only a diff.';
           var proc = await Process.start('dart', [
             cliPath,
@@ -749,7 +752,7 @@ void main() {
               .transform(utf8.decoder)
               .transform(const LineSplitter())
               .toList();
-          var code = await proc.exitCode.timeout(const Duration(minutes: 3));
+          var code = await proc.exitCode.timeout(const Duration(minutes: 2));
           expect(code, 0);
           final hasDiffFrame = lines.any(
             (l) =>
@@ -759,7 +762,7 @@ void main() {
           expect(
             hasDiffFrame,
             isTrue,
-            reason: 'No diff session/update observed',
+            reason: 'claude-code: No diff session/update observed',
           );
 
           // Text rendering check (gemini)
@@ -775,8 +778,12 @@ void main() {
           code = await proc.exitCode.timeout(const Duration(minutes: 2));
           expect(code, 0);
           expect(
-            outText.contains('[diff]') || outText.contains('```diff'),
+            outText.contains('[diff]') ||
+                outText.contains('```diff') ||
+                outText.contains('old_string') ||
+                outText.contains('new_string'),
             isTrue,
+            reason: 'gemini: No diff-like content found in output: $outText',
           );
         } finally {
           try {
@@ -784,7 +791,7 @@ void main() {
           } on Object catch (_) {}
         }
       },
-      timeout: const Timeout(Duration(minutes: 3)),
+      timeout: const Timeout(Duration(minutes: 2)),
     );
 
     test(

@@ -79,10 +79,7 @@ class SessionManager {
     AcpCapabilities? capabilitiesOverride,
   }) async {
     final caps = capabilitiesOverride ?? config.capabilities;
-    final payload = {
-      'protocolVersion': 1,
-      if (caps.toJson().isNotEmpty) 'clientCapabilities': caps.toJson(),
-    };
+    final payload = {'protocolVersion': 1, 'clientCapabilities': caps.toJson()};
     final resp = await peer.initialize(payload);
     return InitializeResult(
       protocolVersion: (resp['protocolVersion'] as num?)?.toInt() ?? 1,

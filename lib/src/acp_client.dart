@@ -12,17 +12,21 @@ import 'transport/transport.dart';
 /// High-level ACP client that manages transport, session lifecycle,
 /// and streams updates from the agent.
 class AcpClient {
-  /// Create a client with the given configuration.
-  AcpClient({required this.config}) {
-    _transport = StdioTransport(
-      cwd: config.workspaceRoot,
-      command: config.agentCommand,
-      args: config.agentArgs,
-      envOverrides: config.envOverrides,
-      logger: config.logger,
-      onProtocolOut: config.onProtocolOut,
-      onProtocolIn: config.onProtocolIn,
-    );
+  /// Create a client with the given configuration and optional transport.
+  /// If no transport is provided, creates a StdioTransport that spawns
+  /// the agent.
+  AcpClient({required this.config, AcpTransport? transport}) {
+    _transport =
+        transport ??
+        StdioTransport(
+          cwd: config.workspaceRoot,
+          command: config.agentCommand,
+          args: config.agentArgs,
+          envOverrides: config.envOverrides,
+          logger: config.logger,
+          onProtocolOut: config.onProtocolOut,
+          onProtocolIn: config.onProtocolIn,
+        );
   }
 
   /// Client configuration.
