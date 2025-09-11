@@ -86,10 +86,10 @@ flowchart LR
 - **session/new** & **session/load**: Start a new session (specify working directory / workspace root) or load an existing one if supported by the agent.  
 - **session/prompt**: Send content blocks; stream `session/update` notifications (plan entries, assistant message deltas, tool calls with status, diffs, available command updates, etc.); complete with a **StopReason**.  
 - **session/cancel**: Notify the agent; ensure pending permission prompts are resolved as cancelled; expect a final prompt result with `stopReason=cancelled`.  
-- **Agent→Client**: Handle `fs/read_text_file`, `fs/write_text_file`, `session/request_permission`, and `terminal/*` via the configured providers.
+- **Agent→Client**: Handle `read_text_file`, `write_text_file`, `session/request_permission`, and terminal lifecycle (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`) via the configured providers.
 
 Notes
-- The wire method names follow ACP’s slash/underscore style (e.g., `fs/read_text_file`). Capability keys in `initialize.clientCapabilities` use camelCase (e.g., `readTextFile`).
+- The wire method names are underscored without a namespace per ACP examples (e.g., `read_text_file`, `write_text_file`). Capability keys in `initialize.clientCapabilities` use camelCase (e.g., `readTextFile`).
 
 ---
 
@@ -484,3 +484,42 @@ dart example/main.dart -a my-agent -o jsonl "List available commands"
 # Read prompt from stdin
 echo "Refactor the following code…" | dart example/main.dart -o jsonl
 ```
+
+---
+
+## 18. Filesystem Access Details (Spec §8)
+
+- Methods: `read_text_file(path, line?, limit?)`, `write_text_file(path, content)`.
+- Jail: The workspace root (session `cwd`) is the security boundary. Paths are resolved and canonicalized (incl. symlinks) before enforcement. Writes outside the jail are denied. Reads may be optionally allowed outside the jail via `AcpConfig.allowReadOutsideWorkspace` for debugging only.
+- Semantics: `line` is a 1‑based starting line; `limit` is number of lines to return. If only `limit` is provided, return the first `limit` lines.
+- Wire names: Handlers are registered as `read_text_file` and `write_text_file` (no `fs/` prefix), matching ACP examples. Terminal lifecycle handlers are registered as `create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`.
+- Diagnostics: FS requests/responses (paths, byte counts, errors) are logged via the session manager’s `Logger`.
+
+## 19. Capability Discovery and E2E Gating
+
+- Source of truth: Each adapter’s capabilities are queried at runtime via the example CLI’s `--list-caps`, which mirrors the `initialize.result` in JSONL.
+- Test helper: `test/helpers/adapter_caps.dart` runs the CLI once per adapter, caches the `agentCapabilities`, and provides skip helpers.
+- Policy: E2E tests assert only on features the adapter advertises (e.g., `loadSession`, `plan`, `diff`, `terminal`, `search`). Unsupported features are skipped with explicit reasons. If an advertised feature fails, treat it as an `AcpClient` bug and investigate.
+
+## 20. Adapter Profiles (Observed)
+
+These are descriptive snapshots; always rely on `--list-caps`.
+
+- Google Gemini CLI (`gemini`)
+  - Does not advertise `loadSession`.
+  - Supports core prompt turns; triggers file read/write tool calls when asked.
+  - Often supports multimodal content (image/audio blocks).
+  - Plan/diff/terminal vary by model/config; tests are gated accordingly.
+
+- Claude Code ACP (`claude-code`)
+  - Commonly advertises MCP integration; uses MCP when configured.
+  - `loadSession` is not advertised.
+  - Strong support for diffs and step‑wise plans; available commands often present.
+  - Terminal/execute may be available depending on environment; tests gate accordingly.
+
+## 21. Recent Implementation Fixes
+
+- Corrected Agent→Client filesystem method names to `read_text_file`/`write_text_file`.
+- Corrected terminal callback names to ACP examples (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`).
+- Clarified and implemented `read_text_file` windowing semantics (1‑based `line`, `limit` as count).
+- Added FS diagnostics in `SessionManager` for better traceability.
