@@ -20,6 +20,7 @@ workspace jail, permissions, and optional terminal provider.
 - Providers: FS jail enforcement, default permission policy, default terminal
   process provider.
 - Terminal events stream for UIs: created/output/exited/released.
+ - When a `TerminalProvider` is configured, the client also advertises a non‑standard `clientCapabilities.terminal: true` to enable terminal tools in adapters that honor it (e.g., Claude Code). Other agents ignore unknown capability keys.
 
 ### Quick Start (Example CLI)
 ```bash
@@ -229,6 +230,9 @@ final client = AcpClient(
     agentCommand: 'your-agent-binary',
     agentArgs: ['--flag'],
     envOverrides: {'FOO': 'bar'},
+    // Optional: enable terminal lifecycle and advertise non‑standard
+    // clientCapabilities.terminal for adapters that use it.
+    terminalProvider: DefaultTerminalProvider(),
   ),
 );
 ```
@@ -278,6 +282,9 @@ The JSONL initialize result may include:
 - `protocolVersion`: negotiated protocol version
 - `authMethods`: available auth methods (if any)
 - `agentCapabilities`: adapter-reported capabilities (if any)
+
+Notes:
+- Plan, diff, available commands, and terminal output are runtime behaviors communicated via `session/update` and tool payloads, not initialize capabilities. You won’t see flags for those in `--list-caps`, but they still work when supported by the adapter.
 
 #### Executing Commands
 
@@ -371,6 +378,25 @@ dart example/main.dart -a gemini "Analyze all Python files for security issues"
 
 # In JSONL mode for detailed tool tracking
 dart example/main.dart -a claude-code -o jsonl "Update dependencies" | grep tool_call
+```
+
+### Terminals
+
+With a `TerminalProvider` configured, the client exposes standard terminal lifecycle handlers (create/output/wait/kill/release). For adapters that gate terminal tools behind a non‑standard client capability (e.g., Claude Code), the client includes `clientCapabilities.terminal: true` during `initialize` to enable those tools.
+
+Examples:
+
+```bash
+# Ask the agent to run a command in a terminal
+dart example/main.dart -a claude-code "Run the command: echo 'Hello from terminal'"
+
+# In text mode you will see terminal lifecycle markers
+# [term] created id=...
+# [term] output id=...
+# [term] exited id=... code=0
+
+# In JSONL mode, terminal content arrives inside tool_call updates
+dart example/main.dart -a claude-code -o jsonl "Run: ls -la" | jq '.params.update | select(.sessionUpdate=="tool_call_update")'
 ```
 
 ### Output Modes Summary

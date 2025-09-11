@@ -91,6 +91,10 @@ flowchart LR
 Notes
 - The wire method names are underscored without a namespace per ACP examples (e.g., `read_text_file`, `write_text_file`). Capability keys in `initialize.clientCapabilities` use camelCase (e.g., `readTextFile`).
 
+Initialization vs runtime
+- The initialize handshake negotiates protocol version and a small set of capabilities (client FS flags; agent `promptCapabilities` such as `image`/`audio`; optional `loadSession`).
+- Features like plans, diffs, available commands, and terminal content are delivered as `session/update` notifications and tool payloads at runtime; they are not part of the standard capability handshake.
+
 ---
 
 ## 5. Lifecycle & Flows
@@ -143,6 +147,8 @@ Terminal lifecycle (when a `TerminalProvider` is supplied):
 - Agent polls `terminal/output` → client returns current buffered output and exit status; emits `TerminalOutputEvent`.
 - Agent calls `terminal/wait_for_exit` → client waits; emits `TerminalExited`.
 - Agent may call `terminal/kill` or `terminal/release`.
+
+Implementation note: when no args are provided, the default provider executes the command via the host shell (`bash -lc` on Unix; `cmd.exe /C` on Windows) to support one‑liner commands emitted by some adapters.
 
 ### 5.3 Cancellation Semantics
 
@@ -254,7 +260,7 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
   - `--agent <name>` (`-a <name>`): selects an agent by key from `agent_servers`.  
   - `--output <mode>` (`-o`): `jsonl|json|text|simple` (json is an alias for jsonl).  
   - `--list-commands`: print available slash commands (AvailableCommand[]) without sending a prompt; waits for `available_commands_update`.  
-  - `--list-caps`: print agent capabilities from `initialize.result` (protocolVersion, authMethods, agentCapabilities) without sending a prompt. In JSONL mode, rely on the mirrored `initialize` frames; in text mode, a concise summary is printed.  
+  - `--list-caps`: print initialize results (protocolVersion, authMethods, agentCapabilities) without sending a prompt. Note: plan/diff/terminal are runtime behaviors and will not appear here. In JSONL mode, rely on mirrored `initialize` frames; in text mode, a concise summary is printed.  
   - `--yolo`: enables read‑everywhere and write capability (writes still confined to CWD).  
   - `--write`: enables write capability (still confined to CWD).  
   - `--resume <id>` / `--save-session <path>`: session resume helpers.  
@@ -508,11 +514,11 @@ echo "Refactor the following code…" | dart example/main.dart -o jsonl
 
 ## 19. Capability Discovery and E2E Gating
 
-- Source of truth: Each adapter’s capabilities are queried at runtime via the example CLI’s `--list-caps`, which mirrors the `initialize.result` in JSONL.
-- Test helper: `test/helpers/adapter_caps.dart` runs the CLI once per adapter, caches the `agentCapabilities`, and provides skip helpers.
-- Policy: E2E tests assert only on features the adapter advertises (e.g., `loadSession`, `plan`, `diff`, `terminal`, `search`). Unsupported features are skipped with explicit reasons. If an advertised feature fails, treat it as an `AcpClient` bug and investigate.
+- Source of truth: Each adapter’s initialize results are mirrored via the example CLI’s `--list-caps`.
+- Test helper: `test/helpers/adapter_caps.dart` runs the CLI once per adapter and caches the `agentCapabilities` for the few features that are negotiated at initialize.
+- Policy update: Plan and diff are runtime behaviors (not initialize capabilities), so related tests are no longer skipped based on caps—they assert based on observed `session/update`. We still gate truly optional protocol methods (e.g., `session/load`). Terminal tests run when a `TerminalProvider` is configured; see the non‑standard terminal flag below.
 
-### 19.1 Capability Keys Guide
+### 19.1 Capability Keys Guide (initialize)
 
 Agent capability payloads are implementation‑defined and often nested. To keep tests resilient, we perform a case‑insensitive, recursive substring match on keys. Use the following key patterns to gate features (examples are illustrative, not prescriptive):
 
@@ -520,17 +526,7 @@ Agent capability payloads are implementation‑defined and often nested. To keep
   - Patterns: `loadSession`, `load_session`
   - Notes: If absent, skip `session/load` tests.
 
-- Plan updates
-  - Patterns: `plan`, `planning`, `planUpdate`
-  - Notes: Gate tests that assert `session/update` with `plan`.
-
-- Diffs
-  - Patterns: `diff`, `applyDiff`, `diffs`
-  - Notes: Gate diff‑specific assertions; still allow plain text code‑block diffs without this cap.
-
-- Terminal / Execute
-  - Patterns: `terminal`, `create_terminal`, `execute`, `shell`
-  - Notes: If any present, allow tests to assert terminal lifecycle or an `execute` tool call path.
+// Removed: plan/diff/terminal are runtime features; do not gate on initialize.
 
 - Search
   - Patterns: `search`, `searchFiles`, `find`
@@ -595,8 +591,14 @@ These are descriptive snapshots; always rely on `--list-caps`.
 - Claude Code ACP (`claude-code`)
   - Commonly advertises MCP integration; uses MCP when configured.
   - `loadSession` is not advertised.
-  - Strong support for diffs and step‑wise plans; available commands often present.
-  - Terminal/execute may be available depending on environment; tests gate accordingly.
+  - Strong support for diffs and step‑wise plans; available commands often present (all via `session/update`).
+  - Terminal/execute are enabled when the client advertises a non‑standard `clientCapabilities.terminal`.
+
+### 19.2 Non‑standard Terminal Capability (Client → Agent)
+
+Some adapters (e.g., Claude Code ACP SDK) conditionally enable terminal tools based on a non‑standard client capability flag. When a `TerminalProvider` is configured, `dart_acp` includes `"terminal": true` in `initialize.clientCapabilities` in addition to the spec‑standard FS flags. Other agents should ignore unknown capability keys.
+
+Terminal lifecycle methods remain standard (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`). The default `DefaultTerminalProvider` executes one‑liner commands via the OS shell (`bash -lc` on Unix; `cmd.exe /C` on Windows) when no args are provided.
 
 ## 21. Recent Implementation Fixes
 

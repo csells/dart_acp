@@ -38,9 +38,9 @@ We also keep a small set of spec sanity tests and low‑level unit tests for sha
 E2E tests run against real ACP adapters/configurations defined in `test/test_settings.json`. They must not use mocks or stubs for ACP interactions.
 
 - Settings source: both AcpClient and CLI E2E tests consistently use `test/test_settings.json`.
-- Adapter capability gating: E2E tests use `test/helpers/adapter_caps.dart` to list adapter capabilities via the CLI and skip tests if required features are not advertised.
-  - Use `skipIfMissingAll(agent, [patterns], name)` to require all listed features.
-  - Use `skipUnlessAny(agent, [patterns], name)` to require at least one of the features.
+- Adapter capability gating: Use `test/helpers/adapter_caps.dart` to list initialize results via the CLI and skip tests only for features that are actually negotiated at initialize (e.g., `session/load`).
+  - Use `skipIfMissingAll(agent, [patterns], name)` for initialize‑time features only.
+  - Do not gate runtime behaviors (plans, diffs, available commands, terminal content) on initialize capabilities; assert based on observed `session/update` instead.
 - Failure policy: E2E tests fail loudly. Do not mask JSON parsing issues or network/process errors. If an output line cannot be parsed as JSON when the test expects JSON, the test should fail.
 - Cleanup: When using temporary directories, check existence before deleting in `addTearDown` (avoid try/catch in assertions path).
 
@@ -50,9 +50,9 @@ E2E tests run against real ACP adapters/configurations defined in `test/test_set
 - Exercises:
   - Session creation, prompt streaming, cancellation
   - Session replay (if adapter supports loadSession)
-  - File read/write tool calls (capability gated)
-  - Plans and diffs (structured or textual, capability gated)
-  - Terminal / execute (events vs tool calls; capability gated)
+  - File read/write tool calls
+  - Plans and diffs (observed via updates; not gated by initialize caps)
+  - Terminal / execute (enabled when a TerminalProvider is configured; not gated by initialize caps)
 
 ### CLI app (E2E)
 - File: `test/cli_app_e2e_test.dart`
@@ -121,8 +121,9 @@ Unit tests run quickly, cover logic in isolation, and may use mocks.
 - Cleanup:
   - Use `addTearDown` to remove temp resources and check `exists()` before deletion.
 - Capability gating:
-  - Use the helpers to skip tests when adapters don’t advertise required features.
-  - Keep capability pattern strings simple and lower‑case (helper matches keys recursively).
+  - Only gate tests for features negotiated at initialize (e.g., `session/load`).
+  - Do not gate runtime features (plans, diffs, available commands, terminal content) on initialize data; assert on observed behavior.
+  - Keep capability pattern strings simple and lower‑case (helper matches keys recursively) when you do gate by initialize.
 - Timeouts:
   - E2E tests have explicit `Timeout` annotations tuned per adapter.
   - Keep unit tests fast; avoid arbitrary sleeps.
@@ -143,4 +144,3 @@ Ensure adapters referenced in `test/test_settings.json` are installed and access
 
 - Argument parsing lives in `example/args.dart`; `example/main.dart` consumes `CliArgs` and fails loud (no special exception handling) to surface errors directly.
 - Troubleshooting guidance for common errors (auth required, invalid settings, empty prompt) is documented in `README.md`.
-

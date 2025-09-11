@@ -95,7 +95,9 @@ class DefaultTerminalProvider implements TerminalProvider {
       } else {
         // Prefer bash if available; fall back to sh otherwise.
         final shell = await _which('bash') ?? await _which('sh') ?? 'sh';
-        final shellArgs = shell.endsWith('bash') ? ['-lc', command] : ['-lc', command];
+        final shellArgs = shell.endsWith('bash')
+            ? ['-lc', command]
+            : ['-lc', command];
         process = await Process.start(
           shell,
           shellArgs,
@@ -144,7 +146,7 @@ class DefaultTerminalProvider implements TerminalProvider {
         final p = (result.stdout as String).trim();
         if (p.isNotEmpty) return p;
       }
-    } catch (_) {
+    } on Exception catch (_) {
       // ignore
     }
     return null;
