@@ -501,6 +501,76 @@ echo "Refactor the following code…" | dart example/main.dart -o jsonl
 - Test helper: `test/helpers/adapter_caps.dart` runs the CLI once per adapter, caches the `agentCapabilities`, and provides skip helpers.
 - Policy: E2E tests assert only on features the adapter advertises (e.g., `loadSession`, `plan`, `diff`, `terminal`, `search`). Unsupported features are skipped with explicit reasons. If an advertised feature fails, treat it as an `AcpClient` bug and investigate.
 
+### 19.1 Capability Keys Guide
+
+Agent capability payloads are implementation‑defined and often nested. To keep tests resilient, we perform a case‑insensitive, recursive substring match on keys. Use the following key patterns to gate features (examples are illustrative, not prescriptive):
+
+- Session replay (loadSession)
+  - Patterns: `loadSession`, `load_session`
+  - Notes: If absent, skip `session/load` tests.
+
+- Plan updates
+  - Patterns: `plan`, `planning`, `planUpdate`
+  - Notes: Gate tests that assert `session/update` with `plan`.
+
+- Diffs
+  - Patterns: `diff`, `applyDiff`, `diffs`
+  - Notes: Gate diff‑specific assertions; still allow plain text code‑block diffs without this cap.
+
+- Terminal / Execute
+  - Patterns: `terminal`, `create_terminal`, `execute`, `shell`
+  - Notes: If any present, allow tests to assert terminal lifecycle or an `execute` tool call path.
+
+- Search
+  - Patterns: `search`, `searchFiles`, `find`
+  - Notes: Gate tests that ask the agent to search the workspace.
+
+- MCP
+  - Patterns: `mcp`, `mcpServers`, `modelContextProtocol`
+  - Notes: Gate tests that expect MCP interaction/mentions.
+
+- Multimodal (input)
+  - Patterns under `promptCapabilities`: `image`, `audio`
+  - Notes: The library transports these content blocks; E2E tests may assert presence of these capabilities but should not require usage.
+
+Gating heuristic (used in tests):
+- A feature is considered “supported” if ANY key in the nested `agentCapabilities` object contains the pattern (case‑insensitive). Keys only; values are not inspected.
+- See `test/helpers/adapter_caps.dart` for the concrete implementation of the recursive key search (`_hasKeyLike`).
+
+Example (illustrative initialize result excerpts):
+
+```json
+{
+  "protocolVersion": 1,
+  "agentCapabilities": {
+    "promptCapabilities": {
+      "embeddedContext": true,
+      "image": true,
+      "audio": true
+    },
+    "tools": {
+      "plan": true,
+      "diff": true,
+      "execute": true
+    },
+    "mcp": true
+  }
+}
+```
+
+```json
+{
+  "protocolVersion": 1,
+  "agentCapabilities": {
+    "promptCapabilities": {
+      "embeddedContext": true,
+      "image": true
+    }
+    // no loadSession; terminal/execute may be absent
+  }
+}
+```
+
 ## 20. Adapter Profiles (Observed)
 
 These are descriptive snapshots; always rely on `--list-caps`.
