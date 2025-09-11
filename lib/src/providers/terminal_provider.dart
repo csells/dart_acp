@@ -79,13 +79,40 @@ class DefaultTerminalProvider implements TerminalProvider {
     String? cwd,
     Map<String, String>? env,
   }) async {
-    final process = await Process.start(
-      command,
-      args,
-      workingDirectory: cwd,
-      environment: env,
-      runInShell: false,
-    );
+    // If no args are provided, treat the command as a shell one-liner.
+    // This matches how many adapters (e.g., Claude Code) invoke terminal
+    // commands via a single string.
+    late final Process process;
+    if (args.isEmpty) {
+      if (Platform.isWindows) {
+        process = await Process.start(
+          'cmd.exe',
+          ['/C', command],
+          workingDirectory: cwd,
+          environment: env,
+          runInShell: false,
+        );
+      } else {
+        // Prefer bash if available; fall back to sh otherwise.
+        final shell = await _which('bash') ?? await _which('sh') ?? 'sh';
+        final shellArgs = shell.endsWith('bash') ? ['-lc', command] : ['-lc', command];
+        process = await Process.start(
+          shell,
+          shellArgs,
+          workingDirectory: cwd,
+          environment: env,
+          runInShell: false,
+        );
+      }
+    } else {
+      process = await Process.start(
+        command,
+        args,
+        workingDirectory: cwd,
+        environment: env,
+        runInShell: false,
+      );
+    }
     final handle = TerminalProcessHandle(
       terminalId: '$sessionId:${DateTime.now().microsecondsSinceEpoch}',
       process: process,
@@ -108,5 +135,18 @@ class DefaultTerminalProvider implements TerminalProvider {
   @override
   Future<void> release(TerminalProcessHandle handle) async {
     await handle.release();
+  }
+
+  Future<String?> _which(String bin) async {
+    try {
+      final result = await Process.run('which', [bin]);
+      if (result.exitCode == 0) {
+        final p = (result.stdout as String).trim();
+        if (p.isNotEmpty) return p;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
   }
 }

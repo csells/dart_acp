@@ -186,7 +186,6 @@ void main() {
         );
       },
       timeout: const Timeout(Duration(minutes: 3)),
-      skip: skipIfMissingAll('claude-code', ['plan'], 'plan updates'),
     );
 
     test(
@@ -224,7 +223,6 @@ void main() {
         }
       },
       timeout: const Timeout(Duration(minutes: 2)),
-      skip: skipIfMissingAll('claude-code', ['diff'], 'diff updates'),
     );
 
     test(

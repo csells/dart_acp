@@ -79,7 +79,13 @@ class SessionManager {
     AcpCapabilities? capabilitiesOverride,
   }) async {
     final caps = capabilitiesOverride ?? config.capabilities;
-    final payload = {'protocolVersion': 1, 'clientCapabilities': caps.toJson()};
+    // Build client capabilities payload from standard caps,
+    // and include non-standard terminal capability when supported.
+    final clientCaps = Map<String, dynamic>.from(caps.toJson());
+    if (config.terminalProvider != null) {
+      clientCaps['terminal'] = true; // Non-standard: used by some adapters
+    }
+    final payload = {'protocolVersion': 1, 'clientCapabilities': clientCaps};
     final resp = await peer.initialize(payload);
     return InitializeResult(
       protocolVersion: (resp['protocolVersion'] as num?)?.toInt() ?? 1,
