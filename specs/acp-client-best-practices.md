@@ -13,7 +13,28 @@ ACP client and UI. Examples from Zed are included and marked as such.
 Normative language uses MUST/SHOULD/MAY. Non‑normative rationale is provided
 inline.
 
-## 1. Architecture & Transport
+## 1. Core ACP vs Extensions
+
+The ACP ecosystem has three categories of features:
+
+**Core ACP (Stable)**
+- Standard protocol features defined in the official specification
+- Includes: initialization, sessions, prompts, file system, permissions, tool calls
+- Guaranteed compatibility across all conformant implementations
+
+**Unstable Features**
+- Experimental features that may change or be removed
+- Currently includes: terminal capability
+- Requires opt-in (e.g., `features = ["unstable"]` in Rust crate)
+
+**Implementation Extensions**
+- Custom features added by specific implementations (e.g., Zed)
+- Examples: session modes, model selection, available commands
+- Not portable across different ACP clients
+
+This document covers all three categories but clearly marks which is which.
+
+## 2. Architecture & Transport
 
 - Protocol: JSON‑RPC 2.0 over stdio.
 - Directionality: Bidirectional request/response and notifications.
@@ -61,7 +82,7 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L193
 
 
-## 2. Initialization & Capability Negotiation
+## 3. Initialization & Capability Negotiation
 
 Flow
 1) Client → Agent: `initialize` with:
@@ -73,6 +94,8 @@ Flow
    - `authMethods` (if any)
 
 Requirements
+- Protocol version is an integer (uint16, range 0-65535) identifying MAJOR protocol
+  version. Only incremented for breaking changes.
 - Clients MUST verify the returned `protocolVersion` and fail early if lower
   than a supported minimum.
 - Clients SHOULD declare only capabilities they actually implement; agents may
@@ -125,13 +148,14 @@ sequenceDiagram
 ```
 
 
-## 3. Sessions
+## 4. Sessions
 
 Create
 - `session/new` with:
   - `cwd`: absolute path; treats as boundary for file operations
   - `mcpServers`: optional list of MCP servers to connect
 - Agent returns `sessionId` (string).
+- May return `auth_required` error if authentication is needed (see Authentication section).
 
 Load (optional)
 - If `loadSession` capability is true, client MAY resume a prior session with
@@ -200,12 +224,19 @@ sequenceDiagram
 ```
 
 
-## 4. Prompt Turn & Streaming
+## 5. Prompt Turn & Streaming
 
 High‑level lifecycle
 - Client → Agent: `session/prompt` with user prompt (text, resources, etc.).
-- Agent → Client: streams `session/update` notifications (agent message chunks,
-  thoughts, plan, tool calls/updates, available commands, mode updates).
+- Agent → Client: streams `session/update` notifications with various types:
+  - `user_message_chunk`: Echoing user's message being processed
+  - `agent_message_chunk`: Agent's response text
+  - `agent_thought_chunk`: Agent's internal reasoning (shown differently in UI)
+  - `plan`: Execution plan with task entries
+  - `tool_call`: New tool invocation
+  - `tool_call_update`: Progress on existing tool call
+  - `available_commands_update`: Dynamic command palette (core ACP)
+  - `current_mode_update`: Mode changes (Zed extension)
 - Agent → Client: final `session/prompt` response containing `stopReason`.
 
 Stop reasons
@@ -295,7 +326,7 @@ sequenceDiagram
 ```
 
 
-## 5. Content & Resources
+## 6. Content & Resources
 
 Content blocks
 - `text`: primary message content (Markdown suggested)
@@ -354,11 +385,22 @@ Sources
 - Zed repo paths above
 
 
-## 6. Tool Calls & Permissioning
+## 7. Tool Calls & Permissioning
 
 Lifecycle
 1) Agent emits `SessionUpdate::ToolCall` with initial metadata (`id`, `title`,
    `kind`, `locations`, optional `raw_input`).
+   
+   Tool kinds (ToolKind enum):
+   - `read`: Reading files or data
+   - `edit`: Modifying files or content  
+   - `delete`: Removing files or data
+   - `move`: Moving or renaming files
+   - `search`: Searching for information
+   - `execute`: Running commands or code
+   - `think`: Internal reasoning or planning
+   - `fetch`: Retrieving external data
+   - `other`: Other tool types (default)
 2) Client MAY respond to `session/request_permission` to authorize execution;
    show arguments; support “always allow” if appropriate.
 3) Agent streams `ToolCallUpdate` with `status` transitions and `content` (e.g.,
@@ -445,7 +487,7 @@ sequenceDiagram
 ```
 
 
-## 7. Filesystem Access (Client Capabilities)
+## 8. Filesystem Access (Client Capabilities)
 
 - Methods: `read_text_file`, `write_text_file`.
 - Security: Clients MUST scope operations to the session `cwd` (or configured
@@ -498,14 +540,18 @@ sequenceDiagram
 ```
 
 
-## 8. Terminal Capability (Optional but Recommended)
+## 9. Terminal Capability (UNSTABLE - Optional but Recommended)
 
+**Status**: UNSTABLE feature - not part of stable ACP spec. May change or be removed.
+
+- Enabling: Requires opt-in via library features (e.g., `features = ["unstable"]` in Rust)
 - Methods: `create_terminal`, `terminal_output`, `wait_for_terminal_exit`,
   `kill_terminal`, `release_terminal`.
 - Usage: Provide streaming terminal output as `ToolCallContent::Terminal` within
   tool updates.
 - UX: Offer a dedicated terminal view per tool call; make output scannable and
   copyable.
+- ClientCapabilities: Declared via `terminal: true` (boolean field)
 
 Zed example (excerpt): crates/agent_servers/src/acp.rs
 
@@ -552,14 +598,17 @@ sequenceDiagram
 ```
 
 
-## 9. Modes and Model Selection
+## 10. Modes and Model Selection (Zed Extension)
 
-- Agents MAY expose session modes (e.g., “code”, “edit”, “plan”) with `modes` in
-  session setup.
-- Clients SHOULD surface a mode selector and reflect `CurrentModeUpdate`
-  notifications.
-- If model selection is supported, expose a picker UI to list and select models;
-  persist per session.
+**Status**: Zed-specific extension - not part of standard ACP.
+
+- Session modes: Custom feature allowing agents to expose modes (e.g., "code", "edit", "plan")
+  via `modes` in session setup and `set_session_mode` method.
+- Available commands: The `available_commands_update` in SessionUpdate IS part of core ACP,
+  allowing agents to advertise available commands dynamically.
+- Model selection: Implementation-specific feature for choosing different AI models.
+- Clients SHOULD surface mode selectors and command palettes when these extensions
+  are provided by the agent.
 
 Zed example (excerpt): crates/agent_servers/src/acp.rs
 ```rust
@@ -603,9 +652,14 @@ sequenceDiagram
 ```
 
 
-## 10. Authentication
+## 11. Authentication
 
 - Agents advertise `authMethods` during `initialize`.
+- When `session/new` returns an `auth_required` error:
+  - Client MUST present available auth methods to user
+  - Call `authenticate` with selected `methodId`
+  - Retry `session/new` after successful authentication
+- Error handling: The `auth_required` error includes details about why auth is needed
 - Clients call `authenticate` flow of choice and retry session creation.
 - UX: Prefer browser‑based auth where available; store API keys securely; keep
   credentials out of JSON‑RPC logs.
@@ -638,7 +692,7 @@ Sources:
   https://agentclientprotocol.com/protocol/schema#authenticate
 
 
-## 11. Error Handling & Cancellations
+## 12. Error Handling & Cancellations
 
 - Use structured JSON‑RPC errors with standard ACP error codes where applicable.
 - Treat cancellations as a first‑class stop reason, not as an error.
@@ -665,7 +719,7 @@ Source:
 - https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L411
 
 
-## 12. Streaming, Concurrency, and Backpressure
+## 13. Streaming, Concurrency, and Backpressure
 
 - Stream small, frequent `session/update` notifications; flush promptly.
 - Clients SHOULD process updates on a foreground/UI executor and offload heavy
@@ -686,7 +740,7 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L119
 
 
-## 13. Security & Trust
+## 14. Security & Trust
 
 - ACP assumes a trusted agent; still gate privileged actions via
   `session/request_permission`.
@@ -702,7 +756,7 @@ Sources:
 - MCP: https://agentclientprotocol.com/overview/architecture#mcp
 
 
-## 14. Versioning & Compatibility
+## 15. Versioning & Compatibility
 
 - Negotiate `protocolVersion` in `initialize`; clients SHOULD enforce a minimum
   supported version and fail fast with a user‑facing error.
@@ -713,7 +767,7 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L165
 
 
-## 15. Telemetry, Tracing, and Debugging
+## 16. Telemetry, Tracing, and Debugging
 
 - Provide a log/trace view of JSON‑RPC traffic for troubleshooting.
 - Correlate request/response IDs and show direction (incoming/outgoing) and
@@ -755,7 +809,7 @@ Sources:
 - https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_tools/src/acp_tools.rs#L164
 
 
-## 16. Testing & Conformance
+## 17. Testing & Conformance
 
 Minimal conformance checklist (client)
 - Initialize: negotiates protocol version; declares only true capabilities
@@ -781,7 +835,7 @@ Trace fixture format (for tests)
 - Validate ordering, streaming, and final stop reason for each prompt turn.
 
 
-## 17. Integration Patterns (Hosts like Zed)
+## 18. Integration Patterns (Hosts like Zed)
 
 - Process lifecycle: spawn agent with piped stdio; kill on drop; stream stderr
   into host logs with JSON recognition fallback.
@@ -800,7 +854,7 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_thread/src/acp_thread.rs#L984
 
 
-## 18. Implementation Notes (non‑normative)
+## 19. Implementation Notes (non‑normative)
 
 - Dart-specific: Stdio transport: `LineSplitter` for inbound frames;
   `stdout.writeln` for outbound; keep stderr for logs.
@@ -814,7 +868,7 @@ Sources:
   payloads.
 
 
-## 19. References
+## 20. References
 
 ACP specification
 - Overview: https://agentclientprotocol.com/overview/introduction
