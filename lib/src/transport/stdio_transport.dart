@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:logging/logging.dart';
 import 'package:stream_channel/stream_channel.dart';
+
 import '../rpc/line_channel.dart';
 import '../transport/transport.dart';
 
@@ -40,6 +43,7 @@ class StdioTransport implements AcpTransport {
 
   Process? _process;
   LineJsonChannel? _channel;
+  late Future<int>? _exitCodeFuture;
 
   @override
   StreamChannel<String> get channel {
@@ -67,6 +71,43 @@ class StdioTransport implements AcpTransport {
     logger.fine('Spawned agent: $cmd ${args.join(' ')}');
 
     _process = proc;
+
+    // Store exit code future for checking process state
+    _exitCodeFuture = proc.exitCode;
+
+    // Give the process a moment to start, checking if it crashes immediately
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // Check if process has already exited
+    var hasExited = false;
+    int? exitCode;
+    try {
+      exitCode = await _exitCodeFuture!.timeout(
+        const Duration(milliseconds: 10),
+      );
+      hasExited = true;
+    } on TimeoutException {
+      // Process is still running, good
+    }
+
+    if (hasExited) {
+      throw StateError('Agent process exited immediately with code $exitCode');
+    }
+
+    // Monitor process exit to detect later crashes
+    unawaited(
+      _exitCodeFuture!.then((code) {
+        if (code != 0) {
+          logger.warning('Agent process exited with code $code');
+          // The process has crashed - close the channel controller
+          // to propagate the error
+          _channel?.channel.sink.addError(
+            StateError('Agent process exited unexpectedly with code $code'),
+          );
+        }
+      }),
+    );
+
     _channel = LineJsonChannel(
       proc,
       onStderr: (s) => logger.finer('[agent stderr] $s'),

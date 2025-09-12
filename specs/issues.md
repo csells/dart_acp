@@ -62,6 +62,12 @@ Some E2E tests may fail or hang due to timing issues with real agents:
 
 # Recently Fixed Issues
 
+## Agent Crash Error Handling
+- **Fixed in**: stdio_transport.dart lines 77-93
+- **Issue**: When agent process crashes immediately (e.g., `false` command), client would get broken pipe error instead of meaningful error message
+- **Solution**: Added early detection of process exit after spawn with 100ms delay, throwing clear StateError if process exits immediately
+- **Status**: ✅ Fixed (pending commit)
+
 ## sessionUpdates Replay Missing TurnEnded
 - **Fixed in**: session_manager.dart line 170
 - **Issue**: `sessionUpdates()` method was not including TurnEnded markers in replay buffer, causing tests to hang waiting for a TurnEnded that would never come

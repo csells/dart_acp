@@ -27,10 +27,19 @@ class LineJsonChannel {
     _controller.local.stream.listen((out) {
       // Each outgoing payload is one JSON-RPC message; append newline
       onOutboundLine?.call(out);
-      process.stdin.add(utf8.encode(out));
-      process.stdin.add([0x0A]);
-      // Flush to ensure immediate delivery
-      unawaited(process.stdin.flush());
+      try {
+        process.stdin.add(utf8.encode(out));
+        process.stdin.add([0x0A]);
+        // Flush to ensure immediate delivery
+        unawaited(
+          process.stdin.flush().catchError((_) {
+            // Ignore flush errors (process may have exited)
+          }),
+        );
+      } on Object catch (e) {
+        // Process has likely exited - propagate the error
+        _controller.local.sink.addError(e);
+      }
     });
   }
 

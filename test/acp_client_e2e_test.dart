@@ -313,7 +313,6 @@ void main() {
       test(
         '$agentName: create/manage sessions and cancellation',
         () async {
-
           final client = await createClient(agentName);
           addTearDown(client.dispose);
           final sessionId = await client.newSession();
@@ -483,9 +482,9 @@ void main() {
           await dir.delete(recursive: true);
         }
       });
-      
+
       File(path.join(dir.path, 'secret.txt')).writeAsStringSync('Secret data');
-      
+
       final client = await createClient(
         'claude-code',
         workspaceRoot: dir.path,
@@ -494,18 +493,16 @@ void main() {
         ),
       );
       addTearDown(client.dispose);
-      
+
       final sessionId = await client.newSession();
       final updates = <AcpUpdate>[];
       await client
           .prompt(
             sessionId: sessionId,
-            content: [
-              AcpClient.text('Read the file secret.txt'),
-            ],
+            content: [AcpClient.text('Read the file secret.txt')],
           )
           .forEach(updates.add);
-      
+
       // The agent should indicate it couldn't read the file
       final messages = updates
           .whereType<MessageDelta>()
@@ -514,15 +511,15 @@ void main() {
           .map((t) => t.text)
           .join()
           .toLowerCase();
-      
+
       // Should NOT contain the secret data
       expect(messages, isNot(contains('secret data')));
       // Should indicate permission issue or inability to read
       expect(
-        messages.contains('permission') || 
-        messages.contains('unable') || 
-        messages.contains('cannot') ||
-        messages.contains('denied'),
+        messages.contains('permission') ||
+            messages.contains('unable') ||
+            messages.contains('cannot') ||
+            messages.contains('denied'),
         isTrue,
         reason: 'Agent should indicate permission was denied',
       );
@@ -549,9 +546,24 @@ void main() {
           agentArgs: const [],
         ),
       );
-      addTearDown(crashing.dispose);
-      await crashing.start();
-      expect(crashing.initialize, throwsA(anything));
+      addTearDown(() async {
+        try {
+          await crashing.dispose();
+        } on Object {
+          // Ignore disposal errors for crashed agent
+        }
+      });
+      // The agent crashes immediately, so start should throw
+      await expectLater(
+        crashing.start(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('Agent process exited immediately'),
+          ),
+        ),
+      );
     });
 
     group('Terminal Operations', () {
@@ -561,7 +573,9 @@ void main() {
           () async {
             // Skip Gemini due to session/prompt bug
             if (agentName == 'gemini') {
-              markTestSkipped("Gemini's experimental ACP has session/prompt bug");
+              markTestSkipped(
+                "Gemini's experimental ACP has session/prompt bug",
+              );
               return;
             }
             final client = await createClient(agentName);
