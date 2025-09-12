@@ -6,10 +6,20 @@ workspace jail, permissions, and optional terminal provider.
 
 ### Specs
 
-- `specs/acp-client-best-practices.md`: Language-agnostic ACP client best practices with Dart notes—covers initialization, sessions, streaming/cancellation, tool calls/permissions, FS/terminal, security, telemetry, testing, and includes diagrams and a conformance checklist (with Zed code references).
-- `specs/dart_acp_technical_design.md`: Technical design of the Dart ACP client and example CLI—goals, architecture, lifecycle flows, providers (FS, permissions, terminal), configuration, testing strategy, and open questions.
-- `specs/architecture-best-practices.md`: General architecture guidelines for this repo—DRY, separation of concerns, SRP, low coupling/high cohesion, observability/testability, security by design, and simplicity.
-- `specs/acp-llms.txt`: Local snapshot of the ACP specification website for offline reference—initialization, session setup, prompt turn, tool calls, file system, terminal, and schema.
+- `specs/acp-client-best-practices.md`: Language-agnostic ACP client best
+  practices with Dart notes—covers initialization, sessions,
+  streaming/cancellation, tool calls/permissions, FS/terminal, security,
+  telemetry, testing, and includes diagrams and a conformance checklist (with
+  Zed code references).
+- `specs/dart_acp_technical_design.md`: Technical design of the Dart ACP client
+  and example CLI—goals, architecture, lifecycle flows, providers (FS,
+  permissions, terminal), configuration, testing strategy, and open questions.
+- `specs/architecture-best-practices.md`: General architecture guidelines for
+  this repo—DRY, separation of concerns, SRP, low coupling/high cohesion,
+  observability/testability, security by design, and simplicity.
+- `specs/acp-llms.txt`: Local snapshot of the ACP specification website for
+  offline reference—initialization, session setup, prompt turn, tool calls, file
+  system, terminal, and schema.
 
 ### Features
 - Stdio transport (JSON‑RPC over stdin/stdout between client and agent).
@@ -20,7 +30,10 @@ workspace jail, permissions, and optional terminal provider.
 - Providers: FS jail enforcement, default permission policy, default terminal
   process provider.
 - Terminal events stream for UIs: created/output/exited/released.
- - When a `TerminalProvider` is configured, the client also advertises a non‑standard `clientCapabilities.terminal: true` to enable terminal tools in adapters that honor it (e.g., Claude Code). Other agents ignore unknown capability keys.
+ - When a `TerminalProvider` is configured, the client also advertises a
+   non‑standard `clientCapabilities.terminal: true` to enable terminal tools in
+   adapters that honor it (e.g., Claude Code). Other agents ignore unknown
+   capability keys.
 
 ### Quick Start (Example CLI)
 ```bash
@@ -32,7 +45,8 @@ See `specs/dart_acp_technical_design.md` §17 for full CLI usage.
 ### Prompt Input
 - Positional argument: Provide the prompt at the end of the command.
   - Example: `dart example/main.dart -a gemini "Summarize README.md"`
-- Stdin: Pipe text into the CLI; it reads the entire stream as the prompt when stdin is not a TTY.
+- Stdin: Pipe text into the CLI; it reads the entire stream as the prompt when
+  stdin is not a TTY.
   - Example: `echo "List available commands" | dart example/main.dart -o jsonl`
 
 Full usage:
@@ -72,37 +86,21 @@ Examples:
 - jsonl/json: raw JSON‑RPC frames mirrored to stdout.
   - Example: `dart example/main.dart -a gemini -o json "Hello"`
 
-## Troubleshooting
-
-- Authentication required errors:
-  If you see a JSON‑RPC "authentication required" error from an agent, you’ll
-  need to authenticate for that agent before sending prompts. For example,
-  log out and log back in via the agent’s own CLI or UI, then retry. Ensure
-  any required API keys or environment variables are set in your shell
-  prior to launching the CLI.
-
-- Settings not found or invalid:
-  The CLI loads `settings.json` from the `example/` directory by default or
-  from `--settings <path>`. If parsing fails, fix the JSON shape or point to a
-  valid file. The `agent_servers` section must contain at least one entry with
-  a `command` string; optional `args` is an array of strings and `env` is a
-  map of string→string.
-
-- Empty prompt:
-  Provide a prompt as trailing args or via stdin (`echo "Hi" | dart example/main.dart`).
-
 ### File Mentions (@‑mentions)
 - Inline file/URL references in prompts:
-  - Local: `@path`, `@"file with spaces.txt"`, absolute or relative; `~` expands.
+  - Local: `@path`, `@"file with spaces.txt"`, absolute or relative; `~`
+    expands.
   - URLs: `@https://example.com/spec`.
-- The `@...` remains visible in the user text; a `resource_link` block is added per mention.
+- The `@...` remains visible in the user text; a `resource_link` block is added
+  per mention.
 - Examples:
   - `dart example/main.dart -a gemini "Review @lib/src/acp_client.dart"`
   - `dart example/main.dart -a claude-code "Analyze @\"specs/dart acp.md\""`
   - `dart example/main.dart -a gemini "Fetch @https://example.com/spec"`
 
 ### MCP Servers
-- Configure top‑level `mcp_servers` in `example/settings.json`; they’re forwarded to `session/new` and `session/load`.
+- Configure top‑level `mcp_servers` in `example/settings.json`; they’re
+  forwarded to `session/new` and `session/load`.
 - Example snippet:
   ```json
   {
@@ -118,39 +116,53 @@ Examples:
   ```
 
 ### Session Resumption
-- Save session ID: `dart example/main.dart -a gemini --save-session /tmp/sid "Hello"`
-- Resume and continue: `dart example/main.dart -a gemini --resume "$(cat /tmp/sid)" "Continue"`
-- Resume with stdin: `echo "Continue" | dart example/main.dart -a claude-code --resume "$(cat /tmp/sid)"`
+- Save session ID: `dart example/main.dart -a gemini --save-session /tmp/sid
+  "Hello"`
+- Resume and continue: `dart example/main.dart -a gemini --resume "$(cat
+  /tmp/sid)" "Continue"`
+- Resume with stdin: `echo "Continue" | dart example/main.dart -a claude-code
+  --resume "$(cat /tmp/sid)"`
 
 ### Agent Selection
-- `-a, --agent <name>` selects an entry from `agent_servers` in `example/settings.json`.
+- `-a, --agent <name>` selects an entry from `agent_servers` in
+  `example/settings.json`.
 - Default is the first listed agent if `-a` is omitted.
   - Examples: `-a gemini`, `-a claude-code`.
-- `--settings <path>` overrides the default `example/settings.json` (useful for CI/tests).
+- `--settings <path>` overrides the default `example/settings.json` (useful for
+  CI/tests).
 
 ### Read / Write Permissions
 - `--write` enables write capability (writes remain confined to CWD).
-- `--yolo` enables read‑everywhere and write capability; writes still fail outside CWD.
+- `--yolo` enables read‑everywhere and write capability; writes still fail
+  outside CWD.
   - Examples:
     - `dart example/main.dart -a gemini --write "Create CHANGELOG entry"`
     - `dart example/main.dart -a claude-code --yolo "Search @/etc/hosts"`
 
 ### Cancellation
-- Ctrl‑C sends `session/cancel` and exits with code 130. Use when turns run long.
+- Ctrl‑C sends `session/cancel` and exits with code 130. Use when turns run
+  long.
 
 ### Install Agents and ACP Adapters
 
 - Google Gemini CLI (ACP-capable):
   - Repo: https://github.com/google-gemini/gemini-cli
-  - Install per the README, then authenticate (the CLI supports OAuth-style login flows). Ensure the `gemini` binary is on your PATH.
-  - ACP: enable with `--experimental-acp` (the example `settings.json` uses this flag).
+  - Install per the README, then authenticate (the CLI supports OAuth-style
+    login flows). Ensure the `gemini` binary is on your PATH.
+  - ACP: enable with `--experimental-acp` (the example `settings.json` uses this
+    flag).
 
 - Claude Code ACP Adapter:
-  - Recommended (Zed's SDK adapter): https://github.com/zed-industries/claude-code-acp
-    - Run via `npx @zed-industries/claude-code-acp` (our default in `example/settings.json`)
-    - Or install globally: `npm i -g @zed-industries/claude-code-acp` and invoke `claude-code-acp`
-    - Authenticate per the adapter/Claude Code instructions (OAuth-style login supported)
-    - This version properly sends available_commands_update after session creation
+  - Recommended (Zed's SDK adapter):
+    https://github.com/zed-industries/claude-code-acp
+    - Run via `npx @zed-industries/claude-code-acp` (our default in
+      `example/settings.json`)
+    - Or install globally: `npm i -g @zed-industries/claude-code-acp` and invoke
+      `claude-code-acp`
+    - Authenticate per the adapter/Claude Code instructions (OAuth-style login
+      supported)
+    - This version properly sends available_commands_update after session
+      creation
 
 #### Usage examples
 
@@ -188,7 +200,8 @@ echo "List available commands" | dart example/main.dart -o jsonl
 
 #### Configuring agents (example/settings.json)
 
-Create or edit `example/settings.json` next to the CLI. Strict JSON (no comments/trailing commas):
+Create or edit `example/settings.json` next to the CLI. Strict JSON (no
+comments/trailing commas):
 
 ```json
 {
@@ -219,7 +232,8 @@ Create or edit `example/settings.json` next to the CLI. Strict JSON (no comments
 Notes:
 - The CLI picks the first listed agent by default.
 - `-a/--agent` selects a specific agent by key.
-- The library itself does not read settings; it accepts explicit command/args/env.
+- The library itself does not read settings; it accepts explicit
+  command/args/env.
 
 Using the library directly:
 
@@ -261,7 +275,8 @@ Note: Gemini currently doesn't expose slash commands, so the list will be empty.
 
 ### Session Modes (Extension)
 
-Some agents expose session modes (e.g., code/edit/plan). You can list and set modes when available.
+Some agents expose session modes (e.g., code/edit/plan). You can list and set
+modes when available.
 
 ```bash
 # List modes without sending a prompt
@@ -305,7 +320,10 @@ The JSONL initialize result may include:
 - `agentCapabilities`: adapter-reported capabilities (if any)
 
 Notes:
-- Plan, diff, available commands, and terminal output are runtime behaviors communicated via `session/update` and tool payloads, not initialize capabilities. You won’t see flags for those in `--list-caps`, but they still work when supported by the adapter.
+- Plan, diff, available commands, and terminal output are runtime behaviors
+  communicated via `session/update` and tool payloads, not initialize
+  capabilities. You won’t see flags for those in `--list-caps`, but they still
+  work when supported by the adapter.
 
 #### Executing Commands
 
@@ -318,7 +336,8 @@ dart example/main.dart -a claude-code "/review this PR and suggest improvements"
 
 ### Plans and Progress Tracking
 
-Agents can emit structured plans showing their approach to complex tasks, with real-time progress updates.
+Agents can emit structured plans showing their approach to complex tasks, with
+real-time progress updates.
 
 #### Requesting Plans
 
@@ -356,7 +375,8 @@ dart example/main.dart -a gemini -o jsonl "Create a testing strategy" | grep '"p
 
 ### Diffs and Code Changes
 
-Agents can propose changes as diffs before applying them, allowing review of modifications.
+Agents can propose changes as diffs before applying them, allowing review of
+modifications.
 
 #### Requesting Diffs
 
@@ -403,7 +423,11 @@ dart example/main.dart -a claude-code -o jsonl "Update dependencies" | grep tool
 
 ### Terminals
 
-With a `TerminalProvider` configured, the client exposes standard terminal lifecycle handlers (create/output/wait/kill/release). For adapters that gate terminal tools behind a non‑standard client capability (e.g., Claude Code), the client includes `clientCapabilities.terminal: true` during `initialize` to enable those tools.
+With a `TerminalProvider` configured, the client exposes standard terminal
+lifecycle handlers (create/output/wait/kill/release). For adapters that gate
+terminal tools behind a non‑standard client capability (e.g., Claude Code), the
+client includes `clientCapabilities.terminal: true` during `initialize` to
+enable those tools.
 
 Examples:
 
@@ -431,9 +455,96 @@ The CLI supports different output modes to suit various use cases:
 | JSONL  | `-o jsonl`          | Raw protocol frames          | All JSON-RPC messages, one per line                          |
 | JSON   | `-o json`           | Same as JSONL                | Alias for JSONL mode                                         |
 
+### Troubleshooting
+
+#### Gemini "Invalid argument" Errors
+
+If you're getting "Invalid argument" errors when using Gemini with ACP, the
+issue is likely with the specific Gemini model being used. Some Gemini models
+have bugs in their experimental ACP implementation.
+
+**Problem:** Setting `GEMINI_MODEL` to certain models (like
+`gemini-2.0-flash-exp` or `gemini-2.5-flash`) causes `session/prompt` requests
+to fail with:
+```json
+{
+  "error": {
+    "code": 400,
+    "message": "Request contains an invalid argument.",
+    "status": "INVALID_ARGUMENT"
+  }
+}
+```
+
+**Solution:** 
+- Don't set the `GEMINI_MODEL` environment variable - let Gemini use its default
+  model
+- If you must use a specific model, test it first to ensure it works with ACP
+- Remove any `"env": {"GEMINI_MODEL": "..."}` from your `settings.json` for the
+  Gemini agent
+
+**Working Configuration:**
+```json
+{
+  "agent_servers": {
+    "gemini": {
+      "command": "gemini",
+      "args": ["--experimental-acp"]
+      // No env overrides - uses default model
+    }
+  }
+}
+```
+
+#### Permission Denied Errors
+
+If agents are getting permission denied errors when trying to read or write
+files:
+
+**Problem:** The agent is requesting permissions that haven't been granted.
+
+**Solution:**
+- Use `--write` flag to enable write permissions: `dart example/main.dart
+  --write "Create a file"`
+- Use `--yolo` flag for read-everywhere + write: `dart example/main.dart --yolo
+  "Read system files"`
+- Note: Write operations are always confined to the current working directory
+  for security
+
+#### Agent Not Found
+
+If you get "command not found" or similar errors:
+
+**Problem:** The agent binary is not in your PATH or the command in
+`settings.json` is incorrect.
+
+**Solution:**
+- Ensure the agent is installed and available in your PATH
+- Use absolute paths in `settings.json` if needed
+- Verify the command works by running it directly in your terminal
+
+### Authentication required errors
+If you see a JSON‑RPC "authentication required" error from an agent, you’ll need
+to authenticate for that agent before sending prompts. For example, log out and
+log back in via the agent’s own CLI or UI, then retry. Ensure any required API
+keys or environment variables are set in your shell prior to launching the CLI.
+
+### Settings not found or invalid
+The CLI loads `settings.json` from the `example/` directory by default or from
+`--settings <path>`. If parsing fails, fix the JSON shape or point to a valid
+file. The `agent_servers` section must contain at least one entry with a
+`command` string; optional `args` is an array of strings and `env` is a map of
+string→string.
+
+### Empty prompt
+Provide a prompt as trailing args or via stdin (`echo "Hi" | dart
+example/main.dart`).
+
+
 ### How to Test
 
-This project uses the `test` package and contains a mix of unit and end-to-end (e2e) tests.
+This project uses the `test` package and contains a mix of unit and end-to-end
+(e2e) tests.
 
 #### Unit Tests (Always Run)
 To run only the unit tests (recommended for quick testing):
@@ -443,7 +554,9 @@ dart test --exclude-tags e2e
 ```
 
 #### E2E Tests (Require Real Agents)
-The e2e tests require actual agents (Gemini, Claude Code) to be configured and available. These tests are tagged with 'e2e' and will timeout if the agents aren't running.
+The e2e tests require actual agents (Gemini, Claude Code) to be configured and
+available. These tests are tagged with 'e2e' and will timeout if the agents
+aren't running.
 
 To run all tests including e2e:
 
@@ -457,7 +570,9 @@ To run only e2e tests:
 dart test --tags e2e
 ```
 
-The e2e tests use a test-specific settings file: `test/test_settings.json`. The tests pass this file to the CLI via `--settings` so they don’t depend on your default `example/settings.json`.
+The e2e tests use a test-specific settings file: `test/test_settings.json`. The
+tests pass this file to the CLI via `--settings` so they don’t depend on your
+default `example/settings.json`.
 
 To run a specific test file:
 

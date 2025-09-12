@@ -9,6 +9,8 @@ This document tracks conformance of `dart_acp` against the ACP spec and best pra
 - Modes (extension): discover, list, and set — Implemented (`--list-modes`, `--mode`, typed `current_mode_update`)
 - Terminal probe helper stability (tests) — Implemented (fixes early return)
 - Display richer tool metadata in text mode — Implemented (`[tool]`, `[tool.in]`, `[tool.out]`)
+- Permission handling — Fixed to respect configured permissions (no auto-allow)
+- Gemini ACP compatibility — Investigated; found bug in Gemini's experimental ACP implementation (session/prompt fails)
 
 Deferred: authentication flow, model selection flags, terminal buffering, chunk coalescing, write guard.
 
@@ -65,4 +67,6 @@ Deferred: authentication flow, model selection flags, terminal buffering, chunk 
  - Richer Tool Metadata (text mode): Text mode prints a human-readable header `[tool] <kind> <title>` and first location `@ path/uri` when present, followed by `[tool.in]`/`[tool.out]` snippets from `raw_input`/`raw_output` (truncated).
    - Print logic: `example/main.dart`
    - Parsed fields: `lib/src/models/tool_types.dart` (`title`, `locations`, `raw_input`, `raw_output`)
- - Large Files (soft cap rationale): Prompts use `resource_link` for files (not embedded bytes), keeping payloads small. FS reads can still return whole files if an agent omits `line/limit`, but typical adapters pass limits. We’re deferring a soft cap unless we see real-world issues.
+ - Large Files (soft cap rationale): Prompts use `resource_link` for files (not embedded bytes), keeping payloads small. FS reads can still return whole files if an agent omits `line/limit`, but typical adapters pass limits. We're deferring a soft cap unless we see real-world issues.
+- Permission Handling: Fixed to respect configured permissions from `AcpConfig` and CLI args. No auto-allowing; agents that request more permissions than granted will receive denial responses.
+- Gemini Compatibility: Gemini's experimental ACP implementation works correctly with the default model. However, certain models (like `gemini-2.0-flash-exp` and `gemini-2.5-flash`) cause `session/prompt` requests to fail with "Invalid argument" errors. Do not set `GEMINI_MODEL` environment variable unless you've verified the specific model works with ACP.

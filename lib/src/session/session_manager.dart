@@ -153,8 +153,8 @@ class SessionManager {
     required List<Map<String, dynamic>> content,
   }) {
     if (!_sessionStreams.containsKey(sessionId)) {
-      // Unknown session; ignore
-      return const Stream<AcpUpdate>.empty();
+      // Unknown session; throw error
+      throw ArgumentError('Invalid session ID: $sessionId');
     }
 
     unawaited(() async {
@@ -166,7 +166,9 @@ class SessionManager {
         final stop = stopReasonFromWire(
           (resp['stopReason'] as String?) ?? 'other',
         );
-        _sessionStreams[sessionId]!.add(TurnEnded(stop));
+        final turnEnded = TurnEnded(stop);
+        _replayBuffers[sessionId]?.add(turnEnded);
+        _sessionStreams[sessionId]!.add(turnEnded);
         if (stop == StopReason.cancelled) {
           _cancellingSessions.remove(sessionId);
         }

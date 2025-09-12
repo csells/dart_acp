@@ -53,11 +53,7 @@ void main() {
     });
 
     test('modes flags and parse', () {
-      final a = CliArgs.parse([
-        '--list-modes',
-        '--mode',
-        'edit',
-      ]);
+      final a = CliArgs.parse(['--list-modes', '--mode', 'edit']);
       expect(a.listModes, isTrue);
       expect(a.modeId, 'edit');
     });
