@@ -1,6 +1,5 @@
-// ignore_for_file: avoid_print
-
 import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:io';
 
 class AgentCaps {
@@ -39,21 +38,17 @@ AgentCaps capsFor(String agent) {
     final res = AgentCaps(agent: agent, result: const {});
     _capsCache[agent] = res;
     // Helpful when running locally
-    print('[caps] list-caps failed for $agent: ${proc.stderr}');
+    dev.log('[caps] list-caps failed for $agent: ${proc.stderr}');
     return res;
   }
   Map<String, dynamic>? initResult;
   for (final line in const LineSplitter().convert(proc.stdout as String)) {
-    try {
-      final m = jsonDecode(line);
-      if (m is Map<String, dynamic>) {
-        final result = m['result'];
-        if (result is Map && result.containsKey('protocolVersion')) {
-          initResult = result.cast<String, dynamic>();
-        }
+    final m = jsonDecode(line);
+    if (m is Map<String, dynamic>) {
+      final result = m['result'];
+      if (result is Map && result.containsKey('protocolVersion')) {
+        initResult = result.cast<String, dynamic>();
       }
-    } on Object {
-      // ignore malformed JSONL lines
     }
   }
   final res = AgentCaps(agent: agent, result: initResult ?? const {});
@@ -156,7 +151,6 @@ String? skipIfNoRuntimeTerminal(String agent) {
       sawTerminal = true;
       break;
     }
-    return null;
   }
   _terminalRuntimeCache[agent] = sawTerminal;
   return sawTerminal

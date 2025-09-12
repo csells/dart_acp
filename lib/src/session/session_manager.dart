@@ -87,6 +87,13 @@ class SessionManager {
     }
     final payload = {'protocolVersion': 1, 'clientCapabilities': clientCaps};
     final resp = await peer.initialize(payload);
+    final negotiated = (resp['protocolVersion'] as num?)?.toInt() ?? 0;
+    if (negotiated < AcpConfig.minimumProtocolVersion) {
+      throw StateError(
+        'Unsupported ACP protocol version: $negotiated. '
+        'Minimum required: ${AcpConfig.minimumProtocolVersion}.',
+      );
+    }
     return InitializeResult(
       protocolVersion: (resp['protocolVersion'] as num?)?.toInt() ?? 1,
       agentCapabilities: resp['agentCapabilities'] as Map<String, dynamic>?,
@@ -103,6 +110,25 @@ class SessionManager {
     final id = resp['sessionId'] as String;
     _sessionStreams.putIfAbsent(id, StreamController<AcpUpdate>.broadcast);
     _replayBuffers.putIfAbsent(id, () => <AcpUpdate>[]);
+    // Capture any modes info from session/new
+    final modes = resp['modes'];
+    if (modes is Map<String, dynamic>) {
+      final current = modes['currentModeId'] as String?;
+      final avail =
+          (modes['availableModes'] as List?)?.cast<Map<String, dynamic>>() ??
+          const [];
+      _sessionModes[id] = (
+        currentModeId: current,
+        availableModes: avail
+            .map(
+              (m) => (
+                id: (m['id'] as String?) ?? '',
+                name: (m['name'] as String?) ?? '',
+              ),
+            )
+            .toList(),
+      );
+    }
     return id;
   }
 
@@ -238,10 +264,54 @@ class SessionManager {
       final u = DiffUpdate.fromJson(update);
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
+    } else if (kind == 'current_mode_update') {
+      final currentModeId = update['currentModeId'] as String?;
+      if (currentModeId != null) {
+        final existing = _sessionModes[sessionId];
+        if (existing != null) {
+          _sessionModes[sessionId] = (
+            currentModeId: currentModeId,
+            availableModes: existing.availableModes,
+          );
+        } else {
+          _sessionModes[sessionId] = (
+            currentModeId: currentModeId,
+            availableModes: const <({String id, String name})>[],
+          );
+        }
+      }
+      final u = ModeUpdate(currentModeId ?? '');
+      _replayBuffers[sessionId]!.add(u);
+      _sessionStreams[sessionId]!.add(u);
     } else {
       final u = UnknownUpdate(json);
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
+    }
+  }
+
+  // ===== Modes support (extension) =====
+  // Store current mode and available modes per session when provided.
+  final Map<
+    String,
+    ({String? currentModeId, List<({String id, String name})> availableModes})
+  >
+  _sessionModes = {};
+
+  /// Returns currently known modes info for the session, if any.
+  ({String? currentModeId, List<({String id, String name})> availableModes})?
+  sessionModes(String sessionId) => _sessionModes[sessionId];
+
+  /// Set the session mode (extension). Returns true if RPC succeeds.
+  Future<bool> setSessionMode({
+    required String sessionId,
+    required String modeId,
+  }) async {
+    try {
+      await peer.setSessionMode({'sessionId': sessionId, 'modeId': modeId});
+      return true;
+    } on Exception catch (_) {
+      return false;
     }
   }
 

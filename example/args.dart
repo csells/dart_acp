@@ -23,7 +23,9 @@ class CliArgs {
     this.yolo = false,
     this.write = false,
     this.listCommands = false,
+    this.listModes = false,
     this.listCaps = false,
+    this.modeId,
     this.resumeSessionId,
     this.saveSessionPath,
     this.prompt,
@@ -37,7 +39,9 @@ class CliArgs {
     var yolo = false;
     var write = false;
     var listCommands = false;
+    var listModes = false;
     var listCaps = false;
+    String? modeId;
     String? resume;
     String? savePath;
 
@@ -67,8 +71,15 @@ class CliArgs {
         write = true;
       } else if (a == '--list-commands') {
         listCommands = true;
+      } else if (a == '--list-modes') {
+        listModes = true;
       } else if (a == '--list-caps') {
         listCaps = true;
+      } else if (a == '--mode') {
+        if (i + 1 >= argv.length) {
+          throw ArgumentError('--mode requires a mode id');
+        }
+        modeId = argv[++i];
       } else if (a == '--resume') {
         if (i + 1 >= argv.length) {
           throw ArgumentError('--resume requires a sessionId');
@@ -104,7 +115,9 @@ class CliArgs {
       yolo: yolo,
       write: write,
       listCommands: listCommands,
+      listModes: listModes,
       listCaps: listCaps,
+      modeId: modeId,
       resumeSessionId: resume,
       saveSessionPath: savePath,
       prompt: prompt,
@@ -118,7 +131,9 @@ class CliArgs {
   final bool yolo;
   final bool write;
   final bool listCommands;
+  final bool listModes;
   final bool listCaps;
+  final String? modeId;
   final String? resumeSessionId;
   final String? saveSessionPath;
   final String? prompt;

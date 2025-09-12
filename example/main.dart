@@ -108,10 +108,13 @@ Future<void> main(List<String> argv) async {
 
   // Prepare prompt and decide if we're in list-only mode.
   final prompt = await _readPrompt(args);
-  final listOnly =
+  final listCommandsOnly =
       args.listCommands && (prompt == null || prompt.trim().isEmpty);
+  final listModesOnly =
+      args.listModes && (prompt == null || prompt.trim().isEmpty);
   if (!args.listCaps &&
-      !listOnly &&
+      !listCommandsOnly &&
+      !listModesOnly &&
       (prompt == null || prompt.trim().isEmpty)) {
     stderr.writeln('Error: empty prompt');
     stderr.writeln('Tip: run with --help for usage.');
@@ -148,6 +151,17 @@ Future<void> main(List<String> argv) async {
     exit(0);
   }
   if (args.resumeSessionId != null) {
+    // Guard session/load behind capability per spec
+    final supportsLoad =
+        (init.agentCapabilities ?? const {})['loadSession'] == true;
+    if (!supportsLoad) {
+      stderr.writeln(
+        'Error: Agent does not support session/load (loadSession=false).',
+      );
+      await sigintSub.cancel();
+      await client.dispose();
+      exit(2);
+    }
     _sessionId = args.resumeSessionId;
     await client.loadSession(sessionId: _sessionId!);
   } else {
@@ -182,7 +196,7 @@ Future<void> main(List<String> argv) async {
     sessionSub = updatesStream.listen((u) {
       if (u is AvailableCommandsUpdate) {
         // Only print commands if --list-commands was passed
-        if (listOnly) {
+        if (listCommandsOnly) {
           final cmds = u.commands;
           if (cmds.isNotEmpty) {
             for (final c in cmds) {
@@ -197,11 +211,34 @@ Future<void> main(List<String> argv) async {
             }
           }
         }
-      } else if (!listOnly) {
+      } else if (!listCommandsOnly && !listModesOnly) {
         if (u is PlanUpdate) {
           stdout.writeln('[plan] ${jsonEncode(u.plan)}');
         } else if (u is ToolCallUpdate) {
-          stdout.writeln('[tool] ${jsonEncode(u.toolCall)}');
+          final t = u.toolCall;
+          final title = (t.title ?? t.name ?? '').trim();
+          final kind = (t.kind ?? '').trim();
+          var locText = '';
+          final locs = t.locations ?? const [];
+          if (locs.isNotEmpty) {
+            final loc = locs.first;
+            final path = (loc['path'] ?? loc['uri'] ?? '').toString();
+            if (path.isNotEmpty) locText = ' @ $path';
+          }
+          final header = [
+            if (kind.isNotEmpty) kind,
+            if (title.isNotEmpty) title,
+          ].join(' ');
+          stdout.writeln('[tool] ${header.isEmpty ? t.id : header}$locText');
+          // Show raw input/output snippets when present
+          if (t.rawInput != null) {
+            final snip = _truncate(_stringify(t.rawInput), 240);
+            if (snip.isNotEmpty) stdout.writeln('[tool.in] $snip');
+          }
+          if (t.rawOutput != null) {
+            final snip = _truncate(_stringify(t.rawOutput), 240);
+            if (snip.isNotEmpty) stdout.writeln('[tool.out] $snip');
+          }
         } else if (u is DiffUpdate) {
           stdout.writeln('[diff] ${jsonEncode(u.diff)}');
         }
@@ -209,10 +246,11 @@ Future<void> main(List<String> argv) async {
     });
   }
 
+  // List-only: Available Commands
   // In list-only mode, do not send a prompt. Wait briefly for an
   // available_commands_update and then exit. If none arrives, print an empty
   // list in text mode.
-  if (listOnly) {
+  if (listCommandsOnly) {
     final settle = Completer<void>();
     late final StreamSubscription<AcpUpdate> onceSub;
     onceSub = updatesStream.listen((u) {
@@ -249,6 +287,61 @@ Future<void> main(List<String> argv) async {
     await sessionSub?.cancel();
     await client.dispose();
     exit(0);
+  }
+
+  // List-only: Modes
+  if (listModesOnly) {
+    final modes = client.sessionModes(_sessionId!);
+    final currentId = modes?.currentModeId ?? '';
+    final list = modes?.availableModes ?? const <({String id, String name})>[];
+    if (args.output.isJsonLike) {
+      final obj = {
+        'jsonrpc': '2.0',
+        'method': 'client/modes',
+        'params': {
+          'sessionId': _sessionId,
+          'currentModeId': currentId,
+          'availableModes': [
+            for (final m in list) {'id': m.id, 'name': m.name},
+          ],
+        },
+      };
+      stdout.writeln(jsonEncode(obj));
+    } else {
+      for (final m in list) {
+        final line = m.name.isEmpty ? m.id : '${m.id} - ${m.name}';
+        stdout.writeln(line);
+      }
+      if (list.isEmpty) {
+        stdout.writeln('(no modes)');
+      }
+    }
+    await sigintSub.cancel();
+    await sessionSub?.cancel();
+    await client.dispose();
+    exit(0);
+  }
+
+  // If a modeId was provided, set it now (best-effort)
+  if (args.modeId != null) {
+    final modes = client.sessionModes(_sessionId!);
+    const fallback = <({String id, String name})>[];
+    final modeList = modes?.availableModes ?? fallback;
+    final available = {
+      for (final ({String id, String name}) m in modeList) m.id,
+    };
+    final desired = args.modeId!;
+    if (!available.contains(desired)) {
+      stderr.writeln('Error: Mode "$desired" not available.');
+      await sigintSub.cancel();
+      await sessionSub?.cancel();
+      await client.dispose();
+      exit(2);
+    }
+    final ok = await client.setMode(sessionId: _sessionId!, modeId: desired);
+    if (!ok) {
+      stderr.writeln('Warning: Failed to set mode "$desired".');
+    }
   }
 
   final content = _buildContentBlocks(prompt!, cwd: cwd);
@@ -320,10 +413,13 @@ void _printUsage() {
   );
   stdout.writeln('      --list-commands    Print available slash commands');
   stdout.writeln('                         (no prompt sent)');
+  stdout.writeln('      --list-modes       Print available session modes');
+  stdout.writeln('                         (no prompt sent)');
   stdout.writeln(
     '      --list-caps        Print agent capabilities from initialize',
   );
   stdout.writeln('                         (no prompt sent)');
+  stdout.writeln('      --mode <id>        Set session mode after creation');
   stdout.writeln('      --resume <id>      Resume an existing');
   stdout.writeln('                         session (replay), then send');
   stdout.writeln('                         the prompt');
@@ -393,6 +489,21 @@ void _printListPlain(List list, {int indent = 0}) {
     } else {
       stdout.writeln('$pad- $item');
     }
+  }
+}
+
+String _truncate(String s, int max) {
+  if (s.length <= max) return s;
+  return '${s.substring(0, max)}…';
+}
+
+String _stringify(Object? o) {
+  if (o == null) return '';
+  try {
+    if (o is String) return o;
+    return jsonEncode(o);
+  } on Object {
+    return o.toString();
   }
 }
 

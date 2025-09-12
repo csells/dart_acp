@@ -51,6 +51,10 @@ class AcpConfig {
        permissionProvider =
            permissionProvider ?? const DefaultPermissionProvider();
 
+  /// Manually maintained minimum protocol version required by this client.
+  /// Bump this constant only when you add support for a future breaking spec.
+  static const int minimumProtocolVersion = 1;
+
   /// Absolute path to the workspace root used for FS jail and session cwd.
   final String workspaceRoot;
 

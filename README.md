@@ -47,7 +47,9 @@ Options:
       --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)
       --write            Enable write capability (still confined to CWD)
       --list-commands    Print available slash commands (ACP AvailableCommand) without sending a prompt
+      --list-modes       Print available session modes (no prompt sent)
       --list-caps        Print capabilities from initialize (protocolVersion, authMethods, agentCapabilities) and exit
+      --mode <id>        Set session mode after creation
       --resume <id>      Resume an existing session (replay), then send the prompt
       --save-session <p> Save new sessionId to file
   -h, --help             Show this help and exit
@@ -257,6 +259,25 @@ dart example/main.dart -a claude-code --list-commands
 
 Note: Gemini currently doesn't expose slash commands, so the list will be empty.
 
+### Session Modes (Extension)
+
+Some agents expose session modes (e.g., code/edit/plan). You can list and set modes when available.
+
+```bash
+# List modes without sending a prompt
+dart example/main.dart -a claude-code --list-modes
+
+# Example output (text mode):
+# code - Coding
+# edit - Editing
+
+# JSONL: emits a single metadata record with availableModes
+dart example/main.dart -a claude-code --list-modes -o jsonl | jq 'select(.method=="client/modes")'
+
+# Set a mode before sending a prompt
+dart example/main.dart -a claude-code --mode edit "Refactor the logging pipeline"
+```
+
 ### Capabilities (Initialize)
 
 Inspect agent capabilities negotiated during `initialize`:
@@ -370,11 +391,11 @@ dart example/main.dart -a claude-code -o jsonl "Propose type safety improvements
 Monitor what tools the agent is using:
 
 ```bash
-# In text mode, tool calls are shown
+# In text mode, tool calls show kind/title and first location, with raw I/O snippets
 dart example/main.dart -a gemini "Analyze all Python files for security issues"
-# [tool] {"name": "fs_read_text_file", "path": "main.py"}
-# [tool] {"name": "fs_read_text_file", "path": "auth.py"}
-# ...
+# [tool] read Read file @ src/main.py
+# [tool.in] {"path":"src/main.py","line":1,"limit":200}
+# [tool.out] "import sys..."
 
 # In JSONL mode for detailed tool tracking
 dart example/main.dart -a claude-code -o jsonl "Update dependencies" | grep tool_call

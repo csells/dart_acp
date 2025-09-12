@@ -145,4 +145,8 @@ class JsonRpcPeer {
   /// Send `session/cancel` as a notification.
   Future<void> cancel(Json params) async =>
       _peer.sendNotification('session/cancel', params);
+
+  /// (Extension) Send `session/set_mode` to change the session's mode.
+  Future<void> setSessionMode(Json params) async =>
+      _peer.sendRequest('session/set_mode', params);
 }

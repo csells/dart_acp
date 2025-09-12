@@ -18,3 +18,6 @@ Summaries and links to specification documents in this repo.
   conventions—structure, E2E vs unit, capability gating, fail‑loud policy, and
   how to run tests.
 
+- [acp-client-compliance.md](./acp-client-compliance.md): ACP compliance
+  checklist for this client, with status, scope decisions, and references to
+  code implementing each item.

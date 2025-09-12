@@ -72,6 +72,11 @@ class _MockPeer implements rpc.JsonRpcPeer {
   }
 
   @override
+  Future<void> setSessionMode(Json params) async {
+    sentRequests.add('session/set_mode');
+  }
+
+  @override
   Future<void> close() async {
     await _sessionUpdatesController.close();
   }

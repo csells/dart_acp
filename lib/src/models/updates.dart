@@ -110,3 +110,12 @@ class UnknownUpdate extends AcpUpdate {
   /// Raw session/update map.
   final Map<String, dynamic> raw;
 }
+
+/// Mode update indicating current session mode changed (extension).
+class ModeUpdate extends AcpUpdate {
+  /// Construct with the new current mode id.
+  const ModeUpdate(this.currentModeId);
+
+  /// Current mode id selected by the agent.
+  final String currentModeId;
+}

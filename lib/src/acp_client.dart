@@ -156,4 +156,25 @@ class AcpClient {
     String? title,
     String? mimeType,
   }) => ResourceContent(uri: uri, title: title, mimeType: mimeType);
+
+  // ===== Modes (extension) =====
+
+  /// Get current/available modes for a session, if provided by the agent.
+  ({String? currentModeId, List<({String id, String name})> availableModes})?
+  sessionModes(String sessionId) {
+    _ensureReady();
+    return _sessionManager!.sessionModes(sessionId);
+  }
+
+  /// Set the session mode (extension). Returns true on success.
+  Future<bool> setMode({
+    required String sessionId,
+    required String modeId,
+  }) async {
+    _ensureReady();
+    return _sessionManager!.setSessionMode(
+      sessionId: sessionId,
+      modeId: modeId,
+    );
+  }
 }
