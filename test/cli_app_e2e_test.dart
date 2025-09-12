@@ -125,7 +125,11 @@ void main() {
         await proc.stdin.close();
         final stderrText = await proc.stderr.transform(utf8.decoder).join();
         final code = await proc.exitCode.timeout(const Duration(seconds: 60));
-        expect(code, 2, reason: 'Expected failure for unavailable mode. stderr= $stderrText');
+        expect(
+          code,
+          2,
+          reason: 'Expected failure for unavailable mode. stderr= $stderrText',
+        );
       },
       timeout: const Timeout(Duration(minutes: 2)),
     );
@@ -152,7 +156,13 @@ void main() {
         await proc.stdin.close();
         final stderrText = await proc.stderr.transform(utf8.decoder).join();
         final code = await proc.exitCode.timeout(const Duration(seconds: 30));
-        expect(code, 2, reason: 'Expected error when loadSession unsupported. stderr= $stderrText');
+        expect(
+          code,
+          2,
+          reason:
+              'Expected error when loadSession unsupported. '
+              'stderr= $stderrText',
+        );
       },
       timeout: const Timeout(Duration(minutes: 2)),
     );

@@ -420,37 +420,40 @@ void main() {
         peer: p as rpc.JsonRpcPeer,
       );
       addTearDown(() async => m.dispose());
-      await expectLater(() => m.initialize(), throwsA(isA<StateError>()));
+      await expectLater(m.initialize, throwsA(isA<StateError>()));
     });
 
-    test('captures modes from newSession result and updates current mode', () async {
-      final p = _PeerWithModes();
-      final m = SessionManager(
-        config: AcpConfig(
-          workspaceRoot: '/test/workspace',
-          agentCommand: 'test-agent',
-        ),
-        peer: p as rpc.JsonRpcPeer,
-      );
-      addTearDown(() async => m.dispose());
-      await m.initialize();
-      final sid = await m.newSession();
-      final modes = m.sessionModes(sid);
-      expect(modes?.currentModeId, 'code');
-      expect(modes?.availableModes.single.id, 'code');
+    test(
+      'captures modes from newSession result and updates current mode',
+      () async {
+        final p = _PeerWithModes();
+        final m = SessionManager(
+          config: AcpConfig(
+            workspaceRoot: '/test/workspace',
+            agentCommand: 'test-agent',
+          ),
+          peer: p as rpc.JsonRpcPeer,
+        );
+        addTearDown(() async => m.dispose());
+        await m.initialize();
+        final sid = await m.newSession();
+        final modes = m.sessionModes(sid);
+        expect(modes?.currentModeId, 'code');
+        expect(modes?.availableModes.single.id, 'code');
 
-      // Simulate a current_mode_update
-      p.simulateUpdate({
-        'sessionId': sid,
-        'update': {
-          'sessionUpdate': 'current_mode_update',
-          'currentModeId': 'edit',
-        },
-      });
-      await Future.delayed(const Duration(milliseconds: 50));
-      final modes2 = m.sessionModes(sid);
-      expect(modes2?.currentModeId, 'edit');
-    });
+        // Simulate a current_mode_update
+        p.simulateUpdate({
+          'sessionId': sid,
+          'update': {
+            'sessionUpdate': 'current_mode_update',
+            'currentModeId': 'edit',
+          },
+        });
+        await Future.delayed(const Duration(milliseconds: 50));
+        final modes2 = m.sessionModes(sid);
+        expect(modes2?.currentModeId, 'edit');
+      },
+    );
 
     test('setSessionMode RPC invoked', () async {
       await manager.initialize();
@@ -474,7 +477,7 @@ void main() {
           'title': 'Read File',
           'kind': 'read',
           'locations': [
-            {'path': 'lib/main.dart'}
+            {'path': 'lib/main.dart'},
           ],
           'raw_input': {'path': 'lib/main.dart'},
           'raw_output': {'content': '...'},
