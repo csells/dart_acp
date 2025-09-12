@@ -108,6 +108,32 @@ class _MockPeer implements rpc.JsonRpcPeer {
   Future<dynamic> Function(Json)? onTerminalRelease;
 }
 
+// Peer that reports protocolVersion 0 in initialize.
+class _PeerV0 extends _MockPeer {
+  @override
+  Future<Json> initialize(Json params) async {
+    sentRequests.add('initialize');
+    return {'protocolVersion': 0, 'agentCapabilities': {}};
+  }
+}
+
+// Peer that returns a modes block in newSession response.
+class _PeerWithModes extends _MockPeer {
+  @override
+  Future<Json> newSession(Json params) async {
+    sentRequests.add('session/new');
+    return {
+      'sessionId': 's1',
+      'modes': {
+        'currentModeId': 'code',
+        'availableModes': [
+          {'id': 'code', 'name': 'Coding'},
+        ],
+      },
+    };
+  }
+}
+
 // ===== Additional helpers for StdinTransport + client integration =====
 
 class _StreamControllerSink implements IOSink {
@@ -382,6 +408,85 @@ void main() {
       expect(updates.any((u) => u is ToolCallUpdate), isTrue);
       expect(updates.any((u) => u is DiffUpdate), isTrue);
       expect(updates.any((u) => u is AvailableCommandsUpdate), isTrue);
+    });
+
+    test('enforces minimum protocol version', () async {
+      final p = _PeerV0();
+      final m = SessionManager(
+        config: AcpConfig(
+          workspaceRoot: '/test/workspace',
+          agentCommand: 'test-agent',
+        ),
+        peer: p as rpc.JsonRpcPeer,
+      );
+      addTearDown(() async => m.dispose());
+      await expectLater(() => m.initialize(), throwsA(isA<StateError>()));
+    });
+
+    test('captures modes from newSession result and updates current mode', () async {
+      final p = _PeerWithModes();
+      final m = SessionManager(
+        config: AcpConfig(
+          workspaceRoot: '/test/workspace',
+          agentCommand: 'test-agent',
+        ),
+        peer: p as rpc.JsonRpcPeer,
+      );
+      addTearDown(() async => m.dispose());
+      await m.initialize();
+      final sid = await m.newSession();
+      final modes = m.sessionModes(sid);
+      expect(modes?.currentModeId, 'code');
+      expect(modes?.availableModes.single.id, 'code');
+
+      // Simulate a current_mode_update
+      p.simulateUpdate({
+        'sessionId': sid,
+        'update': {
+          'sessionUpdate': 'current_mode_update',
+          'currentModeId': 'edit',
+        },
+      });
+      await Future.delayed(const Duration(milliseconds: 50));
+      final modes2 = m.sessionModes(sid);
+      expect(modes2?.currentModeId, 'edit');
+    });
+
+    test('setSessionMode RPC invoked', () async {
+      await manager.initialize();
+      final sid = await manager.newSession(cwd: '/test');
+      final ok = await manager.setSessionMode(sessionId: sid, modeId: 'edit');
+      expect(ok, isTrue);
+      expect(peer.sentRequests, contains('session/set_mode'));
+    });
+
+    test('ToolCall parsing includes title/locations/raw_*', () async {
+      await manager.initialize();
+      final sid = await manager.newSession(cwd: '/test');
+      final updates = <AcpUpdate>[];
+      manager.sessionUpdates(sid).listen(updates.add);
+      peer.simulateUpdate({
+        'sessionId': sid,
+        'update': {
+          'sessionUpdate': 'tool_call_update',
+          'id': 't1',
+          'status': 'completed',
+          'title': 'Read File',
+          'kind': 'read',
+          'locations': [
+            {'path': 'lib/main.dart'}
+          ],
+          'raw_input': {'path': 'lib/main.dart'},
+          'raw_output': {'content': '...'},
+        },
+      });
+      await Future.delayed(const Duration(milliseconds: 50));
+      final tool = updates.whereType<ToolCallUpdate>().first.toolCall;
+      expect(tool.title, 'Read File');
+      expect(tool.kind, 'read');
+      expect(tool.locations?.first['path'], 'lib/main.dart');
+      expect(tool.rawInput, isNotNull);
+      expect(tool.rawOutput, isNotNull);
     });
   });
 

@@ -51,6 +51,16 @@ void main() {
       final a = CliArgs.parse(['--settings', '/tmp/settings.json']);
       expect(a.settingsPath, '/tmp/settings.json');
     });
+
+    test('modes flags and parse', () {
+      final a = CliArgs.parse([
+        '--list-modes',
+        '--mode',
+        'edit',
+      ]);
+      expect(a.listModes, isTrue);
+      expect(a.modeId, 'edit');
+    });
   });
 
   group('settings.json load', () {

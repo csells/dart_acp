@@ -76,6 +76,88 @@ void main() {
     );
 
     test(
+      'list modes: emits client/modes (jsonl)',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '--settings',
+          settingsPath,
+          '-a',
+          'claude-code',
+          '-o',
+          'jsonl',
+          '--list-modes',
+        ]);
+        await proc.stdin.close();
+        final lines = await proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(code, 0, reason: 'list-modes failed. stderr= $stderrText');
+        final saw = lines.any((l) {
+          try {
+            final m = jsonDecode(l) as Map<String, dynamic>;
+            return m['method'] == 'client/modes';
+          } on Exception catch (_) {
+            return false;
+          }
+        });
+        expect(saw, isTrue, reason: 'No client/modes metadata observed');
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'set mode fails when unavailable',
+      () async {
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '--settings',
+          settingsPath,
+          '-a',
+          'claude-code',
+          '--mode',
+          'nonexistent-mode',
+          'Hello',
+        ]);
+        await proc.stdin.close();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 60));
+        expect(code, 2, reason: 'Expected failure for unavailable mode. stderr= $stderrText');
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      '--resume guarded by loadSession capability (error when unsupported)',
+      () async {
+        final caps = capsFor('gemini');
+        final ac = caps.agentCapabilities;
+        final supports = ac['loadSession'] == true;
+        if (supports) {
+          return; // Skip if agent explicitly supports loadSession
+        }
+        final proc = await Process.start('dart', [
+          'example/main.dart',
+          '--settings',
+          settingsPath,
+          '-a',
+          'gemini',
+          '--resume',
+          'abc',
+          'Hi',
+        ]);
+        await proc.stdin.close();
+        final stderrText = await proc.stderr.transform(utf8.decoder).join();
+        final code = await proc.exitCode.timeout(const Duration(seconds: 30));
+        expect(code, 2, reason: 'Expected error when loadSession unsupported. stderr= $stderrText');
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
       'claude-code: terminal frame appears in JSONL',
       () async {
         final proc = await Process.start('dart', [
