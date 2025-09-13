@@ -217,34 +217,113 @@ Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) •
 
 ## Error Handling
 
-Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • GitHub: [docs/protocol/overview.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/overview.mdx)
+Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • [Error](https://agentclientprotocol.com/protocol/error) • GitHub: [docs/protocol/overview.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/overview.mdx), [rust/error.rs](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/rust/error.rs)
 
-All methods follow standard JSON-RPC 2.0 error handling:
+All methods follow standard [JSON-RPC 2.0 error handling](https://www.jsonrpc.org/specification#error_object):
 
 - Successful responses include a `result` field
-- Errors include an `error` object with `code` and `message`
+- Errors include an `error` object with `code`, `message`, and optional `data`
 - Notifications never receive responses (success or error)
 
-### Error Mapping
+### Error Codes
 
-Guidelines for mapping ACP semantics to JSON-RPC errors and results:
+The protocol uses standard JSON-RPC error codes and ACP-specific codes in the reserved range (-32000 to -32099):
 
-- Unsupported protocol version
-  - When the client requests an unsupported version in `initialize`, the Agent returns an error (e.g., code `-32603`) with `error.data` including `minVersion` (and optionally `maxVersion`). Prefer a clear message like "Unsupported protocol version".
-- Authentication required
-  - `session/new` or `session/load` MAY return an error indicating authentication is required. Use a server error code (e.g., `-32001`) and include `error.data.reason = "auth_required"` plus the advertised `authMethods` when possible. Clients SHOULD react by calling `authenticate`.
-- Capability not implemented
-  - If a side receives a method it does not implement (e.g., client optional `terminal/*`), respond with `-32601` (Method not found).
-- Invalid parameters
-  - For structurally invalid inputs, respond with `-32602` (Invalid params) and a concise message. Prefer schema validation (see Validation Tips).
-- Internal errors
-  - Use `-32603` with a generic message; avoid leaking stack traces. Consider `error.data.correlationId` for diagnostics.
-- Cancellation
-  - For `session/prompt`, do NOT return an error when cancelled. Return `result.stopReason = "cancelled"` after flushing pending updates. For pending `session/request_permission`, return `result.outcome = { outcome: "cancelled" }`.
-- Tool execution failures
-  - Prefer reporting failures via `session/update` tool call status `failed` (with optional error content/rawOutput) rather than failing `session/prompt`.
-- Rate limiting or permission denied (domain)
-  - For top-level requests (`initialize`, `session/new`, etc.), use an application error code in `-32000..-32099` and include `error.data.reason` such as `"rate_limited"` or `"permission_denied"` with any retry hints.
+#### Standard JSON-RPC Error Codes
+- `-32700` **Parse Error**: Invalid JSON was received by the server
+- `-32600` **Invalid Request**: The JSON sent is not a valid Request object
+- `-32601` **Method Not Found**: The method does not exist or is not available
+- `-32602` **Invalid Params**: Invalid method parameter(s)
+- `-32603` **Internal Error**: Internal JSON-RPC error
+
+#### ACP-Specific Error Codes
+- `-32000` **Authentication Required**: Authentication is required before this operation can be performed
+- `-32001` to `-32099`: Reserved for implementation-defined server errors (e.g., rate limiting, permission denied)
+
+### Error Response Structure
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32601,
+    "message": "Method not found",
+    "data": {
+      "method": "_example.com/custom_method",
+      "reason": "Custom method not supported"
+    }
+  }
+}
+```
+
+### Error Mapping Guidelines
+
+Implementations should map ACP semantics to JSON-RPC errors consistently:
+
+#### Protocol Version Mismatch
+When the client requests an unsupported version in `initialize`:
+- Return error code `-32603` (Internal Error)
+- Include in `error.data`:
+  - `minVersion`: Minimum supported version
+  - `maxVersion`: Maximum supported version (optional)
+- Use clear message: "Unsupported protocol version"
+
+#### Authentication Required
+When authentication is needed for `session/new` or `session/load`:
+- Return error code `-32000` (Authentication Required)
+- Include in `error.data`:
+  - `reason`: `"auth_required"`
+  - `authMethods`: Available authentication methods
+- Clients SHOULD respond by calling `authenticate`
+
+#### Capability Not Implemented
+When receiving an unsupported method (e.g., optional `terminal/*` methods):
+- Return error code `-32601` (Method Not Found)
+- Include method name in `error.data.method` if helpful
+
+#### Invalid Parameters
+For structurally invalid or schema-violating inputs:
+- Return error code `-32602` (Invalid Params)
+- Provide concise, actionable message
+- Include validation details in `error.data` when helpful
+
+#### Internal Errors
+For unexpected server errors:
+- Return error code `-32603` (Internal Error)
+- Use generic message to avoid leaking sensitive information
+- Consider including `error.data.correlationId` for diagnostics
+- Never expose stack traces in production
+
+#### Cancellation Handling
+Cancellation is NOT an error condition:
+- For `session/prompt`: Return `result.stopReason = "cancelled"` after flushing pending updates
+- For `session/request_permission`: Return `result.outcome = { outcome: "cancelled" }`
+- Never return an error for user-initiated cancellation
+
+#### Tool Execution Failures
+Tool failures should be reported as part of normal flow:
+- Use `session/update` with tool call status `"failed"`
+- Include error details in tool call's `content` or `rawOutput`
+- Only fail `session/prompt` for catastrophic errors
+
+#### Rate Limiting and Permissions
+For domain-specific restrictions:
+- Use application error codes in range `-32001` to `-32099`
+- Include in `error.data`:
+  - `reason`: `"rate_limited"` or `"permission_denied"`
+  - `retryAfter`: Seconds until retry allowed (for rate limiting)
+  - `scope`: What permission was denied (for authorization)
+
+### Implementation Best Practices
+
+1. **Consistent Error Codes**: Always use the same error code for the same type of error
+2. **Helpful Messages**: Provide clear, actionable error messages
+3. **Structured Data**: Use `error.data` for machine-readable details
+4. **Graceful Degradation**: Clients should handle unknown error codes gracefully
+5. **No Silent Failures**: Always report errors explicitly
+6. **Validation First**: Validate inputs early and return clear parameter errors
+7. **Security Conscious**: Never leak implementation details or sensitive data in errors
 
 ## Initialization
 
@@ -499,10 +578,10 @@ Parameters:
 - `url` (string, required): The URL of the MCP server
 - `headers` (HttpHeader[], required): HTTP headers to include in requests to the server
 
-**SSE Transport**
+**SSE Transport** *(Deprecated)*
 When the Agent supports `mcpCapabilities.sse`, Clients can specify MCP servers configurations using the SSE transport.
 
-*Warning: This transport was deprecated by the MCP spec.*
+**⚠️ Warning: This transport has been deprecated by the MCP specification and should not be used for new implementations.**
 
 Parameters:
 - `type` (string, required): Must be `"sse"` to indicate SSE transport
