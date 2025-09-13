@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 
-import '../example/args.dart';
-import '../example/settings.dart';
+import '../example/bin/acpcli/args.dart';
+import '../example/bin/acpcli/settings.dart';
 
 void main() {
   group('CLI args parse', () {

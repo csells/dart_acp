@@ -6,7 +6,7 @@ import 'package:dart_acp/dart_acp.dart';
 import 'package:path/path.dart' as path;
 import 'package:test/test.dart';
 
-import '../example/settings.dart';
+import '../example/bin/acpcli/settings.dart';
 // import 'helpers/adapter_caps.dart'; // Commented out - causes test loading issues
 
 void main() {

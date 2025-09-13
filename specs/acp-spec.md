@@ -261,13 +261,10 @@ The protocol uses standard JSON-RPC error codes and ACP-specific codes in the re
 
 Implementations should map ACP semantics to JSON-RPC errors consistently:
 
-#### Protocol Version Mismatch
-When the client requests an unsupported version in `initialize`:
-- Return error code `-32603` (Internal Error)
-- Include in `error.data`:
-  - `minVersion`: Minimum supported version
-  - `maxVersion`: Maximum supported version (optional)
-- Use clear message: "Unsupported protocol version"
+#### Version Negotiation Mismatch
+Agents SHOULD NOT return an error when the requested `protocolVersion` is unsupported.
+Instead, respond from `initialize` with the latest version the Agent supports. If the
+Client doesn't support that version, it SHOULD close the connection and inform the user.
 
 #### Authentication Required
 When authentication is needed for `session/new` or `session/load`:
@@ -327,7 +324,7 @@ For domain-specific restrictions:
 
 ## Initialization
 
-Docs: [Initialization](https://agentclientprotocol.com/protocol/initialization) • GitHub: [docs/protocol/initialization.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/initialization.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Initialization](https://agentclientprotocol.com/protocol/initialization) • GitHub: [docs/protocol/initialization.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/initialization.mdx) • Schema: [initialize](https://agentclientprotocol.com/protocol/schema#initialize) • [InitializeResponse](https://agentclientprotocol.com/protocol/schema#initializeresponse) • [ClientCapabilities](https://agentclientprotocol.com/protocol/schema#clientcapabilities) • [AgentCapabilities](https://agentclientprotocol.com/protocol/schema#agentcapabilities) • [PromptCapabilities](https://agentclientprotocol.com/protocol/schema#promptcapabilities) • [McpCapabilities](https://agentclientprotocol.com/protocol/schema#mcpcapabilities) • [ProtocolVersion](https://agentclientprotocol.com/protocol/schema#protocolversion)
 
 The Initialization phase allows Clients and Agents to negotiate protocol versions, capabilities, and authentication methods.
 
@@ -369,7 +366,7 @@ The Agent **MUST** respond with the chosen protocol version and the capabilities
         "audio": true,
         "embeddedContext": true
       },
-      "mcp": {
+      "mcpCapabilities": {
         "http": true,
         "sse": true
       }
@@ -428,7 +425,7 @@ Optionally, they **MAY** support richer types of content by specifying the follo
 - `audio` (boolean, default: false): The prompt may include `ContentBlock::Audio`
 - `embeddedContext` (boolean, default: false): The prompt may include `ContentBlock::Resource`
 
-**MCP capabilities**
+**mcpCapabilities**
 - `http` (boolean, default: false): The Agent supports connecting to MCP servers over HTTP.
 - `sse` (boolean, default: false): The Agent supports connecting to MCP servers over SSE. Note: This transport has been deprecated by the MCP spec.
 
@@ -436,7 +433,7 @@ Optionally, they **MAY** support richer types of content by specifying the follo
 
 Some agents require authentication before allowing session creation.
 
-Docs: [Initialization](https://agentclientprotocol.com/protocol/initialization) • Schema: [`authenticate`](https://agentclientprotocol.com/protocol/schema#authenticate)
+Docs: [Initialization](https://agentclientprotocol.com/protocol/initialization) • Schema: [`authenticate`](https://agentclientprotocol.com/protocol/schema#authenticate) • [AuthenticateResponse](https://agentclientprotocol.com/protocol/schema#authenticateresponse) • [AuthMethod](https://agentclientprotocol.com/protocol/schema#authmethod) • [AuthMethodId](https://agentclientprotocol.com/protocol/schema#authmethodid)
 
 - Method: `authenticate`
 - When required: Agents advertise available methods in `initialize.result.authMethods`.
@@ -452,7 +449,7 @@ Flow:
 
 ## Session Setup
 
-Docs: [Session Setup](https://agentclientprotocol.com/protocol/session-setup) • GitHub: [docs/protocol/session-setup.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/session-setup.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Session Setup](https://agentclientprotocol.com/protocol/session-setup) • GitHub: [docs/protocol/session-setup.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/session-setup.mdx) • Schema: [NewSessionRequest](https://agentclientprotocol.com/protocol/schema#newsessionrequest) • [NewSessionResponse](https://agentclientprotocol.com/protocol/schema#newsessionresponse) • [LoadSessionRequest](https://agentclientprotocol.com/protocol/schema#loadsessionrequest) • [LoadSessionResponse](https://agentclientprotocol.com/protocol/schema#loadsessionresponse) • [McpServer](https://agentclientprotocol.com/protocol/schema#mcpserver) • [EnvVariable](https://agentclientprotocol.com/protocol/schema#envvariable) • [HttpHeader](https://agentclientprotocol.com/protocol/schema#httpheader)
 
 Sessions represent a specific conversation or thread between the Client and Agent. Each session maintains its own context, conversation history, and state, allowing multiple independent interactions with the same Agent.
 
@@ -591,7 +588,7 @@ Parameters:
 
 ## Prompt Turn
 
-Docs: [Prompt Turn](https://agentclientprotocol.com/protocol/prompt-turn) • [Content](https://agentclientprotocol.com/protocol/content) • GitHub: [docs/protocol/prompt-turn.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/prompt-turn.mdx), [docs/protocol/content.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/content.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Prompt Turn](https://agentclientprotocol.com/protocol/prompt-turn) • [Content](https://agentclientprotocol.com/protocol/content) • GitHub: [docs/protocol/prompt-turn.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/prompt-turn.mdx), [docs/protocol/content.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/content.mdx) • Schema: [PromptRequest](https://agentclientprotocol.com/protocol/schema#promptrequest) • [PromptResponse](https://agentclientprotocol.com/protocol/schema#promptresponse) • [StopReason](https://agentclientprotocol.com/protocol/schema#stopreason) • [SessionNotification](https://agentclientprotocol.com/protocol/schema#sessionnotification) • [SessionUpdate](https://agentclientprotocol.com/protocol/schema#sessionupdate) • [ContentBlock](https://agentclientprotocol.com/protocol/schema#contentblock)
 
 A prompt turn represents a complete interaction cycle between the Client and Agent, starting with a user message and continuing until the Agent completes its response. This may involve multiple exchanges with the language model and tool invocations.
 
@@ -949,7 +946,7 @@ Parameters:
 
 ## File System
 
-Docs: [File System](https://agentclientprotocol.com/protocol/file-system) • GitHub: [docs/protocol/file-system.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/file-system.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [File System](https://agentclientprotocol.com/protocol/file-system) • GitHub: [docs/protocol/file-system.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/file-system.mdx) • Schema: [ReadTextFileRequest](https://agentclientprotocol.com/protocol/schema#readtextfilerequest) • [ReadTextFileResponse](https://agentclientprotocol.com/protocol/schema#readtextfileresponse) • [WriteTextFileRequest](https://agentclientprotocol.com/protocol/schema#writetextfilerequest) • [WriteTextFileResponse](https://agentclientprotocol.com/protocol/schema#writetextfileresponse)
 
 The filesystem methods allow Agents to read and write text files within the Client's environment. These methods enable Agents to access unsaved editor state and allow Clients to track file modifications made during agent execution.
 
@@ -1029,7 +1026,7 @@ The Client responds with an empty result on success:
 
 ## Tool Calls
 
-Docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls) • GitHub: [docs/protocol/tool-calls.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/tool-calls.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls) • GitHub: [docs/protocol/tool-calls.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/tool-calls.mdx) • Schema: [ToolCall](https://agentclientprotocol.com/protocol/schema#toolcall) • [ToolCallUpdate](https://agentclientprotocol.com/protocol/schema#toolcallupdate) • [ToolCallContent](https://agentclientprotocol.com/protocol/schema#toolcallcontent) • [ToolCallLocation](https://agentclientprotocol.com/protocol/schema#toolcalllocation) • [RequestPermissionRequest](https://agentclientprotocol.com/protocol/schema#requestpermissionrequest) • [RequestPermissionResponse](https://agentclientprotocol.com/protocol/schema#requestpermissionresponse) • [RequestPermissionOutcome](https://agentclientprotocol.com/protocol/schema#requestpermissionoutcome) • [PermissionOption](https://agentclientprotocol.com/protocol/schema#permissionoption) • [ToolCallStatus](https://agentclientprotocol.com/protocol/schema#toolcallstatus) • [ToolKind](https://agentclientprotocol.com/protocol/schema#toolkind)
 
 Tool calls represent actions that language models request Agents to perform during a prompt turn. When an LLM determines it needs to interact with external systems—like reading files, running code, or fetching data—it generates tool calls that the Agent executes on its behalf.
 
@@ -1246,7 +1243,7 @@ Parameters:
 
 ## Terminals
 
-Docs: [Terminals](https://agentclientprotocol.com/protocol/terminals) • GitHub: [docs/protocol/terminals.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/terminals.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Terminals](https://agentclientprotocol.com/protocol/terminals) • GitHub: [docs/protocol/terminals.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/terminals.mdx) • Schema: [CreateTerminalRequest](https://agentclientprotocol.com/protocol/schema#createterminalrequest) • [CreateTerminalResponse](https://agentclientprotocol.com/protocol/schema#createterminalresponse) • [TerminalOutputRequest](https://agentclientprotocol.com/protocol/schema#terminaloutputrequest) • [TerminalOutputResponse](https://agentclientprotocol.com/protocol/schema#terminaloutputresponse) • [WaitForTerminalExitRequest](https://agentclientprotocol.com/protocol/schema#waitforterminalexitrequest) • [WaitForTerminalExitResponse](https://agentclientprotocol.com/protocol/schema#waitforterminalexitresponse) • [KillTerminalCommandRequest](https://agentclientprotocol.com/protocol/schema#killterminalcommandrequest) • [KillTerminalCommandResponse](https://agentclientprotocol.com/protocol/schema#killterminalcommandresponse) • [ReleaseTerminalRequest](https://agentclientprotocol.com/protocol/schema#releaseterminalrequest) • [ReleaseTerminalResponse](https://agentclientprotocol.com/protocol/schema#releaseterminalresponse)
 
 The terminal methods allow Agents to execute shell commands within the Client's environment. These methods enable Agents to run build processes, execute scripts, and interact with command-line tools while providing real-time output streaming and process control.
 
@@ -1462,7 +1459,7 @@ If the terminal was added to a tool call, the client **SHOULD** continue to disp
 
 ## Session Modes
 
-Docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes) • GitHub: [docs/protocol/session-modes.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/session-modes.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes) • GitHub: [docs/protocol/session-modes.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/session-modes.mdx) • Schema: [SetSessionModeRequest](https://agentclientprotocol.com/protocol/schema#setsessionmoderequest) • [SetSessionModeResponse](https://agentclientprotocol.com/protocol/schema#setsessionmoderesponse) • [SessionModeState](https://agentclientprotocol.com/protocol/schema#sessionmodestate) • [SessionMode](https://agentclientprotocol.com/protocol/schema#sessionmode) • [SessionUpdate (current_mode_update)](https://agentclientprotocol.com/protocol/schema#sessionupdate)
 
 Agents can provide a set of modes they can operate in. Modes often affect the system prompts used, the availability of tools, and whether they request permission before running.
 
@@ -1531,6 +1528,8 @@ Typically, Clients display the available modes to the user and allow them to cha
 }
 ```
 
+On success, the Agent responds with an empty object (`result: {}`).
+
 Parameters:
 - `sessionId` (SessionId, required): The ID of the session to set the mode for
 - `modeId` (SessionModeId, required): The ID of the mode to switch to. Must be one of the modes listed in `availableModes`
@@ -1547,7 +1546,7 @@ The Agent can also change its own mode and let the Client know by sending the `c
     "sessionId": "sess_abc123def456",
     "update": {
       "sessionUpdate": "current_mode_update",
-      "modeId": "code"
+      "currentModeId": "code"
     }
   }
 }
@@ -1561,7 +1560,7 @@ This "switch mode" tool will usually request permission before running, which it
 
 ## Agent Plan
 
-Docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan) • GitHub: [docs/protocol/agent-plan.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/agent-plan.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan) • GitHub: [docs/protocol/agent-plan.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/agent-plan.mdx) • Schema: [Plan](https://agentclientprotocol.com/protocol/schema#plan) • [PlanEntry](https://agentclientprotocol.com/protocol/schema#planentry) • [PlanEntryPriority](https://agentclientprotocol.com/protocol/schema#planentrypriority) • [PlanEntryStatus](https://agentclientprotocol.com/protocol/schema#planentrystatus)
 
 Plans are execution strategies for complex tasks that require multiple steps.
 
@@ -1630,7 +1629,7 @@ Plans can evolve during execution. The Agent **MAY** add, remove, or modify plan
 
 ## Slash Commands
 
-Docs: [Slash Commands](https://agentclientprotocol.com/protocol/slash-commands) • GitHub: [docs/protocol/slash-commands.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/slash-commands.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+Docs: [Slash Commands](https://agentclientprotocol.com/protocol/slash-commands) • GitHub: [docs/protocol/slash-commands.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/slash-commands.mdx) • Schema: [AvailableCommand](https://agentclientprotocol.com/protocol/schema#availablecommand) • [AvailableCommandInput](https://agentclientprotocol.com/protocol/schema#availablecommandinput)
 
 Agents can advertise a set of slash commands that users can invoke. These commands provide quick access to specific agent capabilities and workflows. Commands are run as part of regular prompt requests where the Client includes the command text in the prompt.
 
@@ -1884,6 +1883,14 @@ This appendix summarizes core types to implement the protocol. See the JSON Sche
 - `AuthMethodId` (string): Authentication method identifier
 - `PermissionOptionId` (string): Permission option identifier
 - `SessionModeId` (string): Session mode identifier
+
+### Stop Reasons
+
+- `end_turn`: The language model finishes responding without requesting more tools. Schema: [StopReason](https://agentclientprotocol.com/protocol/schema#stopreason)
+- `max_tokens`: The maximum token limit is reached
+- `max_turn_requests`: The maximum number of model requests in a single turn is exceeded
+- `refusal`: The Agent refuses to continue
+- `cancelled`: The Client cancels the turn via `session/cancel`
 
 ### Capabilities
 
