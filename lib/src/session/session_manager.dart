@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import '../capabilities.dart';
 import '../config.dart';
 import '../models/terminal_events.dart';
+import '../models/tool_types.dart';
 import '../models/types.dart';
 import '../models/updates.dart';
 import '../providers/permission_provider.dart';
@@ -63,6 +64,8 @@ class SessionManager {
   final Set<String> _cancellingSessions = <String>{};
   final StreamController<TerminalEvent> _terminalEvents =
       StreamController<TerminalEvent>.broadcast();
+  // Track tool calls by session and tool call ID for proper merging
+  final Map<String, Map<String, ToolCall>> _toolCalls = {};
 
   /// Dispose all internal resources and close streams.
   Future<void> dispose() async {
@@ -72,6 +75,7 @@ class SessionManager {
     }
     _sessionStreams.clear();
     _replayBuffers.clear();
+    _toolCalls.clear();
   }
 
   /// Send `initialize` with capabilities and return negotiated result.
@@ -244,7 +248,33 @@ class SessionManager {
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'tool_call' || kind == 'tool_call_update') {
-      final u = ToolCallUpdate.fromJson(update);
+      // Get tool call ID from the update
+      final toolCallId =
+          update['toolCallId'] as String? ?? update['id'] as String? ?? '';
+
+      // Initialize tool calls map for session if needed
+      _toolCalls.putIfAbsent(sessionId, () => {});
+
+      final ToolCall toolCall;
+      if (kind == 'tool_call') {
+        // New tool call - create and store it
+        toolCall = ToolCall.fromJson(update);
+        _toolCalls[sessionId]![toolCallId] = toolCall;
+      } else {
+        // tool_call_update - merge with existing
+        final existing = _toolCalls[sessionId]![toolCallId];
+        if (existing != null) {
+          // Merge update fields into existing tool call
+          toolCall = existing.merge(update);
+          _toolCalls[sessionId]![toolCallId] = toolCall;
+        } else {
+          // No existing tool call found, create new one from update
+          toolCall = ToolCall.fromJson(update);
+          _toolCalls[sessionId]![toolCallId] = toolCall;
+        }
+      }
+
+      final u = ToolCallUpdate(toolCall);
       _replayBuffers[sessionId]!.add(u);
       _sessionStreams[sessionId]!.add(u);
     } else if (kind == 'user_message_chunk' ||

@@ -66,10 +66,7 @@ void main() {
       await client.initialize();
       final sid = await client.newSession();
 
-      final updates = client.prompt(
-        sessionId: sid,
-        content: [AcpClient.text(prompt)],
-      );
+      final updates = client.prompt(sessionId: sid, content: prompt);
 
       final collected = <AcpUpdate>[];
       await for (final u in updates.timeout(
@@ -320,10 +317,7 @@ void main() {
 
           // Prompt and ensure response completes
           await client
-              .prompt(
-                sessionId: sessionId,
-                content: [AcpClient.text('What is 2+2?')],
-              )
+              .prompt(sessionId: sessionId, content: 'What is 2+2?')
               .drain();
 
           // Skip multiple prompts test for Gemini due to known bug
@@ -337,10 +331,7 @@ void main() {
           // Test multiple prompts in same session
           await Future.delayed(const Duration(seconds: 1));
           final draining = client
-              .prompt(
-                sessionId: sessionId,
-                content: [AcpClient.text('Count to 1000000 slowly')],
-              )
+              .prompt(sessionId: sessionId, content: 'Count to 1000000 slowly')
               .drain();
           await Future.delayed(const Duration(milliseconds: 100));
           await client.cancel(sessionId: sessionId);
@@ -355,9 +346,7 @@ void main() {
           final client = await createClient(agentName);
           addTearDown(client.dispose);
           final sessionId = await client.newSession();
-          await client
-              .prompt(sessionId: sessionId, content: [AcpClient.text('Hello')])
-              .drain();
+          await client.prompt(sessionId: sessionId, content: 'Hello').drain();
           final replayed = <AcpUpdate>[];
           await for (final u in client.sessionUpdates(sessionId)) {
             replayed.add(u);
@@ -375,9 +364,11 @@ void main() {
       test(
         '$agentName: file read operations',
         () async {
-          // Skip Gemini due to session/prompt bug
+          // Skip Gemini - doesn't report tool calls as expected by test
           if (agentName == 'gemini') {
-            markTestSkipped("Gemini's experimental ACP has session/prompt bug");
+            markTestSkipped(
+              "Gemini doesn't report read tool calls as expected",
+            );
             return;
           }
           final dir = await Directory.systemTemp.createTemp('acp_read_');
@@ -404,9 +395,7 @@ void main() {
           await client
               .prompt(
                 sessionId: sessionId,
-                content: [
-                  AcpClient.text('Read the file test.txt and summarize it'),
-                ],
+                content: 'Read the file test.txt and summarize it',
               )
               .forEach(updates.add);
           final finalToolCalls = getFinalToolCalls(updates);
@@ -426,11 +415,6 @@ void main() {
       test(
         '$agentName: file write operations',
         () async {
-          // Skip Gemini due to session/prompt bug
-          if (agentName == 'gemini') {
-            markTestSkipped("Gemini's experimental ACP has session/prompt bug");
-            return;
-          }
           final dir = await Directory.systemTemp.createTemp('acp_write_');
           addTearDown(() async {
             if (dir.existsSync()) {
@@ -454,11 +438,7 @@ void main() {
           await client
               .prompt(
                 sessionId: sessionId,
-                content: [
-                  AcpClient.text(
-                    'Create a file output.txt with content "Test output"',
-                  ),
-                ],
+                content: 'Create a file output.txt with content "Test output"',
               )
               .forEach(updates.add);
           final finalToolCalls = getFinalToolCalls(updates);
@@ -483,9 +463,9 @@ void main() {
             await dir.delete(recursive: true);
           }
         });
-        
+
         File(path.join(dir.path, 'test.txt')).writeAsStringSync('Test data');
-        
+
         // Create a client with specific permission configuration
         final permissionRequests = <String>[];
         final client = await createClient(
@@ -507,26 +487,25 @@ void main() {
           ),
         );
         addTearDown(client.dispose);
-        
+
         final sessionId = await client.newSession();
         final updates = <AcpUpdate>[];
-        
+
         // Ask to both read and write
         await client
             .prompt(
               sessionId: sessionId,
-              content: [
-                AcpClient.text(
-                  'Read test.txt and then write "Modified" to output.txt',
-                ),
-              ],
+              content: 'Read test.txt and then write "Modified" to output.txt',
             )
             .forEach(updates.add);
-        
+
         // Verify permission requests were made
-        expect(permissionRequests.isNotEmpty, isTrue,
-               reason: 'Permission provider should have been consulted');
-        
+        expect(
+          permissionRequests.isNotEmpty,
+          isTrue,
+          reason: 'Permission provider should have been consulted',
+        );
+
         // Check that the agent handled the denial appropriately
         final messages = updates
             .whereType<MessageDelta>()
@@ -535,14 +514,20 @@ void main() {
             .map((t) => t.text)
             .join()
             .toLowerCase();
-        
+
         // Should have read the file (allowed)
-        expect(messages.contains('test data') || messages.contains('test.txt'),
-               isTrue, reason: 'Agent should have been able to read the file');
-        
+        expect(
+          messages.contains('test data') || messages.contains('test.txt'),
+          isTrue,
+          reason: 'Agent should have been able to read the file',
+        );
+
         // Should NOT have created output.txt (denied)
-        expect(File(path.join(dir.path, 'output.txt')).existsSync(), isFalse,
-               reason: 'Write should have been denied');
+        expect(
+          File(path.join(dir.path, 'output.txt')).existsSync(),
+          isFalse,
+          reason: 'Write should have been denied',
+        );
       },
       timeout: const Timeout(Duration(seconds: 60)),
     );
@@ -570,10 +555,7 @@ void main() {
       final sessionId = await client.newSession();
       final updates = <AcpUpdate>[];
       await client
-          .prompt(
-            sessionId: sessionId,
-            content: [AcpClient.text('Read the file secret.txt')],
-          )
+          .prompt(sessionId: sessionId, content: 'Read the file secret.txt')
           .forEach(updates.add);
 
       // The agent should indicate it couldn't read the file
@@ -604,9 +586,7 @@ void main() {
       final sessionId = await client.newSession();
       final invalid = 'invalid-$sessionId-mod';
       expect(
-        () => client
-            .prompt(sessionId: invalid, content: [AcpClient.text('Hello')])
-            .drain(),
+        () => client.prompt(sessionId: invalid, content: 'Hello').drain(),
         throwsA(anything),
       );
     });
@@ -652,9 +632,9 @@ void main() {
           await dir.delete(recursive: true);
         }
       });
-      
+
       File(path.join(dir.path, 'test.txt')).writeAsStringSync('Test content');
-      
+
       final client = await createClient(
         'claude-code',
         workspaceRoot: dir.path,
@@ -663,84 +643,83 @@ void main() {
         ),
       );
       addTearDown(client.dispose);
-      
+
       final sessionId = await client.newSession();
       final updates = <AcpUpdate>[];
-      
+
       await client
           .prompt(
             sessionId: sessionId,
-            content: [
-              AcpClient.text('Read test.txt and tell me what it contains'),
-            ],
+            content: 'Read test.txt and tell me what it contains',
           )
           .forEach(updates.add);
-      
+
       // Find tool call updates
       final toolCalls = updates.whereType<ToolCallUpdate>();
       expect(toolCalls.isNotEmpty, isTrue, reason: 'No tool calls observed');
-      
+
       // Check for richer metadata
       final readCall = toolCalls.firstWhere(
-        (tc) => tc.toolCall.kind == ToolKind.read || 
-                (tc.toolCall.title?.contains('read') ?? false),
+        (tc) =>
+            tc.toolCall.kind == ToolKind.read ||
+            (tc.toolCall.title?.contains('read') ?? false),
         orElse: () => toolCalls.first,
       );
-      
+
       // Verify at least some metadata fields are present
       // Note: Not all fields may be present in every tool call
-      final hasMetadata = 
+      final hasMetadata =
           readCall.toolCall.title != null ||
           readCall.toolCall.locations != null ||
           readCall.toolCall.rawInput != null ||
           readCall.toolCall.rawOutput != null;
-      
-      expect(hasMetadata, isTrue,
-             reason: 'Tool call should have at least some metadata fields');
+
+      expect(
+        hasMetadata,
+        isTrue,
+        reason: 'Tool call should have at least some metadata fields',
+      );
     });
 
     test('current_mode_update routing', () async {
       // Test that current_mode_update events are properly routed as ModeUpdate
       final client = await createClient('claude-code');
       addTearDown(client.dispose);
-      
+
       final sessionId = await client.newSession();
-      
+
       // Get available modes
       final modes = client.sessionModes(sessionId);
       if (modes == null || modes.availableModes.isEmpty) {
         markTestSkipped('No modes available for testing');
         return;
       }
-      
+
       // Find a mode different from current
       final currentMode = modes.currentModeId;
       final targetMode = modes.availableModes.firstWhere(
         (m) => m.id != currentMode,
         orElse: () => modes.availableModes.first,
       );
-      
+
       if (targetMode.id == currentMode) {
         markTestSkipped('Only one mode available, cannot test mode change');
         return;
       }
-      
+
       // Set up listener for mode updates
       final updates = <AcpUpdate>[];
       final sub = client
-          .prompt(
-            sessionId: sessionId,
-            content: [AcpClient.text('Hello')],
-          )
+          .prompt(sessionId: sessionId, content: 'Hello')
           .listen(updates.add);
-      
+
       // Change mode (this should trigger current_mode_update)
       await client.setMode(sessionId: sessionId, modeId: targetMode.id);
-      
+
       // Wait a bit for the update to be routed
       await Future.delayed(const Duration(milliseconds: 500));
       await sub.cancel();
-      
+
       // Check if we received a ModeUpdate
       final modeUpdates = updates.whereType<ModeUpdate>();
       expect(
@@ -748,7 +727,7 @@ void main() {
         isTrue,
         reason: 'No ModeUpdate received after changing mode',
       );
-      
+
       final modeUpdate = modeUpdates.first;
       expect(modeUpdate.currentModeId, equals(targetMode.id));
     });
@@ -758,10 +737,11 @@ void main() {
         test(
           '$agentName: execute via terminal or execute tool',
           () async {
-            // Skip Gemini due to session/prompt bug
+            // Skip Gemini - doesn't report execute tool calls as expected
             if (agentName == 'gemini') {
               markTestSkipped(
-                "Gemini's experimental ACP has session/prompt bug",
+                "Gemini doesn't report execute tool calls as expected - "
+                'this is an agent limitation, not a dart_acp bug',
               );
               return;
             }
@@ -774,11 +754,7 @@ void main() {
             await client
                 .prompt(
                   sessionId: sessionId,
-                  content: [
-                    AcpClient.text(
-                      'Run the command: echo "Hello from terminal"',
-                    ),
-                  ],
+                  content: 'Run the command: echo "Hello from terminal"',
                 )
                 .forEach(updates.add);
             await Future.delayed(const Duration(milliseconds: 500));

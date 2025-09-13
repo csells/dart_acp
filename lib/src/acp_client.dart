@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'capabilities.dart';
 import 'config.dart';
-import 'models/content_types.dart';
+import 'content/content_builder.dart';
 import 'models/terminal_events.dart';
 import 'models/updates.dart';
 import 'rpc/peer.dart';
@@ -74,12 +74,24 @@ class AcpClient {
   }
 
   /// Send a prompt to the agent and stream `AcpUpdate`s.
+  ///
+  /// The [content] string can include @-mentions for files and URLs:
+  /// - `@file.txt` or `@"path with spaces/file.txt"` for local files
+  /// - `@https://example.com/resource` for URLs
+  /// - `@~/Documents/file.txt` for home directory paths
   Stream<AcpUpdate> prompt({
     required String sessionId,
-    required List<Map<String, dynamic>> content,
+    required String content,
   }) {
     _ensureReady();
-    return _sessionManager!.prompt(sessionId: sessionId, content: content);
+    final contentBlocks = ContentBuilder.buildFromPrompt(
+      content,
+      workspaceRoot: config.workspaceRoot,
+    );
+    return _sessionManager!.prompt(
+      sessionId: sessionId,
+      content: contentBlocks,
+    );
   }
 
   /// Subscribe to the persistent session updates stream (includes replay).
@@ -129,33 +141,6 @@ class AcpClient {
       throw StateError('AcpClient not started. Call start() first.');
     }
   }
-
-  /// Convenience helper to build a text content block.
-  static Map<String, dynamic> text(String text) => {
-    'type': 'text',
-    'text': text,
-  };
-
-  /// Create a typed text content block.
-  static TextContent textContent(String text) => TextContent(text: text);
-
-  /// Create a typed image content block.
-  static ImageContent imageContent(String mimeType, String data) =>
-      ImageContent(mimeType: mimeType, data: data);
-
-  /// Create a typed resource content block.
-  static ResourceContent resourceContent(
-    String uri, {
-    String? title,
-    String? mimeType,
-  }) => ResourceContent(uri: uri, title: title, mimeType: mimeType);
-
-  /// Create a typed resource link content block (preferred).
-  static ResourceContent resourceLinkContent(
-    String uri, {
-    String? title,
-    String? mimeType,
-  }) => ResourceContent(uri: uri, title: title, mimeType: mimeType);
 
   // ===== Modes (extension) =====
 

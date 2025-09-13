@@ -28,7 +28,7 @@ void main() {
         expect(stopReasonFromWire('max_tokens'), equals(StopReason.maxTokens));
         expect(
           stopReasonFromWire('max_turn_requests'),
-          equals(StopReason.maxTokens),
+          equals(StopReason.maxTurnRequests),
         );
         expect(stopReasonFromWire('cancelled'), equals(StopReason.cancelled));
         expect(stopReasonFromWire('refusal'), equals(StopReason.refusal));
@@ -108,16 +108,6 @@ void main() {
 
         // Test permission provider exists
         expect(provider.onRequest, isNotNull);
-      });
-    });
-
-    group('Content Blocks', () {
-      test('text content block structure', () {
-        final block = AcpClient.text('Hello, world!');
-
-        expect(block['type'], equals('text'));
-        expect(block['text'], equals('Hello, world!'));
-        expect(block.keys, containsAll(['type', 'text']));
       });
     });
 
@@ -205,8 +195,16 @@ void main() {
         const plan = PlanUpdate(
           Plan(
             entries: [
-              PlanEntry(content: 'Step 1', priority: PlanEntryPriority.high, status: PlanEntryStatus.pending),
-              PlanEntry(content: 'Step 2', priority: PlanEntryPriority.medium, status: PlanEntryStatus.inProgress),
+              PlanEntry(
+                content: 'Step 1',
+                priority: PlanEntryPriority.high,
+                status: PlanEntryStatus.pending,
+              ),
+              PlanEntry(
+                content: 'Step 2',
+                priority: PlanEntryPriority.medium,
+                status: PlanEntryStatus.inProgress,
+              ),
             ],
           ),
         );

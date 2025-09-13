@@ -5,7 +5,7 @@ enum StopReason {
 
   /// The agent hit token limits for the turn.
   maxTokens,
-  
+
   /// The maximum number of model requests in a single turn is exceeded.
   maxTurnRequests,
 
@@ -41,7 +41,7 @@ StopReason stopReasonFromWire(String s) {
 abstract class AcpType {
   /// Creates an ACP type.
   const AcpType({this.meta});
-  
+
   /// Meta fields for custom information and extensions.
   final Map<String, dynamic>? meta;
 }

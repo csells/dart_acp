@@ -1,7 +1,80 @@
 # Agent Client Protocol (ACP) Specification
 # Source: https://agentclientprotocol.com (Official Documentation)
+Repository: https://github.com/zed-industries/agent-client-protocol
+
+## Table of Contents
+
+- [Overview](#overview)
+  - [Architecture Overview](#architecture-overview)
+- [Communication Model](#communication-model)
+  - [Message Flow](#message-flow)
+- [Agent Interface](#agent-interface)
+- [Client Interface](#client-interface)
+- [Argument Requirements](#argument-requirements)
+- [Error Handling](#error-handling)
+  - [Error Mapping](#error-mapping)
+- [Initialization](#initialization)
+  - [Protocol Version](#protocol-version)
+  - [Version Negotiation](#version-negotiation)
+  - [Capabilities](#capabilities)
+  - [Authentication](#authentication)
+- [Session Setup](#session-setup)
+  - [Creating a Session](#creating-a-session)
+  - [Loading Sessions](#loading-sessions)
+- [Prompt Turn](#prompt-turn)
+  - [The Prompt Turn Lifecycle](#the-prompt-turn-lifecycle)
+  - [Session Updates](#session-updates)
+- [Content](#content)
+  - [Content Types](#content-types)
+- [File System](#file-system)
+  - [Reading Files](#reading-files)
+  - [Writing Files](#writing-files)
+- [Tool Calls](#tool-calls)
+- [Terminals](#terminals)
+  - [Executing Commands](#executing-commands)
+  - [Getting Output](#getting-output)
+  - [Waiting for Exit](#waiting-for-exit)
+  - [Killing Commands](#killing-commands)
+  - [Releasing Terminals](#releasing-terminals)
+- [Session Modes](#session-modes)
+  - [Initial State](#initial-state)
+  - [Setting the Current Mode](#setting-the-current-mode)
+- [Agent Plan](#agent-plan)
+  - [Creating Plans](#creating-plans)
+  - [Updating Plans](#updating-plans)
+- [Slash Commands](#slash-commands)
+  - [Advertising Commands](#advertising-commands)
+  - [Running Commands](#running-commands)
+- [Extensibility](#extensibility)
+  - [The _meta Field](#the-meta-field)
+  - [Extension Methods](#extension-methods)
+  - [Advertising Custom Capabilities](#advertising-custom-capabilities)
+- [Transport](#transport)
+  - [Wire Format Examples](#wire-format-examples)
+- [Supported Editors](#supported-editors)
+- [Supported Agents](#supported-agents)
+- [Libraries and Schema](#libraries-and-schema)
+- [Type Reference](#type-reference)
+  - [Identifiers](#identifiers)
+  - [Capabilities](#capabilities-1)
+  - [MCP Servers](#mcp-servers-1)
+  - [Content Blocks](#content-blocks)
+  - [Authentication](#authentication-1)
+  - [Tool Calls](#tool-calls-1)
+  - [Plans](#plans)
+  - [Permissions](#permissions)
+  - [Terminals](#terminals-1)
+  - [Validation Tips](#validation-tips)
+- [Reference Flows](#reference-flows)
+  - [Client Happy Path](#client-happy-path)
+  - [Agent Happy Path](#agent-happy-path)
+- [Compliance](#compliance)
+  - [Agent Checklist](#agent-checklist)
+  - [Client Checklist](#client-checklist)
 
 ## Overview
+
+Docs: [Introduction](https://agentclientprotocol.com/overview/introduction) • [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • GitHub: [docs/overview/introduction.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/overview/introduction.mdx), [docs/protocol/overview.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/overview.mdx)
 
 The Agent Client Protocol (ACP) standardizes communication between code editors (IDEs, text-editors, etc.) and coding agents (programs that use generative AI to autonomously modify code).
 
@@ -22,6 +95,8 @@ Agents that implement ACP work with any compatible editor. Editors that support 
 
 ### Architecture Overview
 
+Docs: [Architecture](https://agentclientprotocol.com/overview/architecture) • GitHub: [docs/overview/architecture.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/overview/architecture.mdx)
+
 ACP assumes that the user is primarily in their editor, and wants to reach out and use agents to assist them with specific tasks.
 
 Agents run as sub-processes of the code editor, and communicate using JSON-RPC over stdio. The protocol re-uses the JSON representations used in MCP where possible, but includes custom types for useful agentic coding UX elements, like displaying diffs.
@@ -29,6 +104,8 @@ Agents run as sub-processes of the code editor, and communicate using JSON-RPC o
 The default format for user-readable text is Markdown, which allows enough flexibility to represent rich formatting without requiring that the code editor is capable of rendering HTML.
 
 ## Communication Model
+
+Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • GitHub: [docs/protocol/overview.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/overview.mdx)
 
 The protocol follows the JSON-RPC 2.0 specification with two types of messages:
 
@@ -55,6 +132,8 @@ A typical flow follows this pattern:
    - Turn ends and the Agent sends the `session/prompt` response with a stop reason
 
 ## Agent Interface
+
+Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • GitHub: [docs/protocol/overview.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/overview.mdx)
 
 Agents are programs that use generative AI to autonomously modify code. They typically run as subprocesses of the Client.
 
@@ -86,6 +165,8 @@ Switch between agent operating modes.
 Cancel ongoing operations (no response expected).
 
 ## Client Interface
+
+Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • GitHub: [docs/protocol/overview.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/overview.mdx)
 
 Clients provide the interface between users and agents. They are typically code editors (IDEs, text editors) but can also be other UIs for interacting with agents. Clients manage the environment, handle user interactions, and control access to resources.
 
@@ -129,10 +210,14 @@ Send session updates to inform the Client of changes (no response expected). Thi
 
 ## Argument Requirements
 
+Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • [Schema](https://agentclientprotocol.com/protocol/schema) • GitHub: [schema/schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+
 - All file paths in the protocol **MUST** be absolute.
 - Line numbers are 1-based
 
 ## Error Handling
+
+Docs: [Protocol Overview](https://agentclientprotocol.com/protocol/overview) • GitHub: [docs/protocol/overview.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/overview.mdx)
 
 All methods follow standard JSON-RPC 2.0 error handling:
 
@@ -140,7 +225,30 @@ All methods follow standard JSON-RPC 2.0 error handling:
 - Errors include an `error` object with `code` and `message`
 - Notifications never receive responses (success or error)
 
+### Error Mapping
+
+Guidelines for mapping ACP semantics to JSON-RPC errors and results:
+
+- Unsupported protocol version
+  - When the client requests an unsupported version in `initialize`, the Agent returns an error (e.g., code `-32603`) with `error.data` including `minVersion` (and optionally `maxVersion`). Prefer a clear message like "Unsupported protocol version".
+- Authentication required
+  - `session/new` or `session/load` MAY return an error indicating authentication is required. Use a server error code (e.g., `-32001`) and include `error.data.reason = "auth_required"` plus the advertised `authMethods` when possible. Clients SHOULD react by calling `authenticate`.
+- Capability not implemented
+  - If a side receives a method it does not implement (e.g., client optional `terminal/*`), respond with `-32601` (Method not found).
+- Invalid parameters
+  - For structurally invalid inputs, respond with `-32602` (Invalid params) and a concise message. Prefer schema validation (see Validation Tips).
+- Internal errors
+  - Use `-32603` with a generic message; avoid leaking stack traces. Consider `error.data.correlationId` for diagnostics.
+- Cancellation
+  - For `session/prompt`, do NOT return an error when cancelled. Return `result.stopReason = "cancelled"` after flushing pending updates. For pending `session/request_permission`, return `result.outcome = { outcome: "cancelled" }`.
+- Tool execution failures
+  - Prefer reporting failures via `session/update` tool call status `failed` (with optional error content/rawOutput) rather than failing `session/prompt`.
+- Rate limiting or permission denied (domain)
+  - For top-level requests (`initialize`, `session/new`, etc.), use an application error code in `-32000..-32099` and include `error.data.reason` such as `"rate_limited"` or `"permission_denied"` with any retry hints.
+
 ## Initialization
+
+Docs: [Initialization](https://agentclientprotocol.com/protocol/initialization) • GitHub: [docs/protocol/initialization.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/initialization.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
 
 The Initialization phase allows Clients and Agents to negotiate protocol versions, capabilities, and authentication methods.
 
@@ -245,7 +353,27 @@ Optionally, they **MAY** support richer types of content by specifying the follo
 - `http` (boolean, default: false): The Agent supports connecting to MCP servers over HTTP.
 - `sse` (boolean, default: false): The Agent supports connecting to MCP servers over SSE. Note: This transport has been deprecated by the MCP spec.
 
+### Authentication
+
+Some agents require authentication before allowing session creation.
+
+Docs: [Initialization](https://agentclientprotocol.com/protocol/initialization) • Schema: [`authenticate`](https://agentclientprotocol.com/protocol/schema#authenticate)
+
+- Method: `authenticate`
+- When required: Agents advertise available methods in `initialize.result.authMethods`.
+- Request params:
+  - `methodId` (AuthMethodId, required): One of the IDs returned in `authMethods`.
+- Response: `{}` on success.
+- Errors: `session/new` and `session/load` MAY return an `auth_required` error until authentication succeeds.
+
+Flow:
+- Client calls `initialize`, inspects `authMethods`.
+- If non-empty and the agent returns `auth_required` on `session/new`, call `authenticate` with a chosen `methodId`.
+- Retry `session/new` after successful authentication.
+
 ## Session Setup
+
+Docs: [Session Setup](https://agentclientprotocol.com/protocol/session-setup) • GitHub: [docs/protocol/session-setup.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/session-setup.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
 
 Sessions represent a specific conversation or thread between the Client and Agent. Each session maintains its own context, conversation history, and state, allowing multiple independent interactions with the same Agent.
 
@@ -383,6 +511,8 @@ Parameters:
 - `headers` (HttpHeader[], required): HTTP headers to include when establishing the SSE connection
 
 ## Prompt Turn
+
+Docs: [Prompt Turn](https://agentclientprotocol.com/protocol/prompt-turn) • [Content](https://agentclientprotocol.com/protocol/content) • GitHub: [docs/protocol/prompt-turn.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/prompt-turn.mdx), [docs/protocol/content.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/content.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
 
 A prompt turn represents a complete interaction cycle between the Client and Agent, starting with a user message and continuing until the Agent completes its response. This may involve multiple exchanges with the language model and tool invocations.
 
@@ -595,6 +725,30 @@ When the Agent receives this notification, it **SHOULD** stop all language model
 
 After all ongoing operations have been successfully aborted and pending updates have been sent, the Agent **MUST** respond to the original `session/prompt` request with the `cancelled` stop reason.
 
+### Session Updates
+
+Agents stream progress via `session/update` notifications. The `params` shape is:
+- `sessionId` (SessionId, required)
+- `update` (SessionUpdate, required): One of the variants below
+
+Variants:
+- `user_message_chunk`: A chunk of the user's message
+  - `content` (ContentBlock, required)
+- `agent_message_chunk`: A chunk of the agent's message
+  - `content` (ContentBlock, required)
+- `agent_thought_chunk`: A chunk of the agent's internal reasoning
+  - `content` (ContentBlock, required)
+- `tool_call`: New tool call started
+  - Fields: `toolCallId` (required), `title` (required), `kind` (ToolKind), `status` (ToolCallStatus), `content` (ToolCallContent[]), `locations` (ToolCallLocation[]), `rawInput` (object), `rawOutput` (object)
+- `tool_call_update`: Updates an existing tool call
+  - Fields (all optional except `toolCallId`): `toolCallId` (required), `status`, `title`, `kind`, `content` (replace), `locations` (replace), `rawInput`, `rawOutput`
+- `plan`: Current execution plan
+  - `entries` (PlanEntry[], required). Client replaces the whole plan on each update.
+- `available_commands_update`: Current commands available
+  - `availableCommands` (AvailableCommand[], required)
+- `current_mode_update`: Current session mode changed
+  - `currentModeId` (SessionModeId, required)
+
 ## Content
 
 Content blocks represent displayable information that flows through the Agent Client Protocol. They provide a structured way to handle various types of user-facing content—whether it's text from language models, images for analysis, or embedded resources for context.
@@ -607,6 +761,8 @@ Content blocks appear in:
 The Agent Client Protocol uses the same `ContentBlock` structure as the Model Context Protocol (MCP). This design choice enables Agents to seamlessly forward content from MCP tool outputs without transformation.
 
 ### Content Types
+
+Docs: [Content](https://agentclientprotocol.com/protocol/content) • GitHub: [docs/protocol/content.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/content.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
 
 #### Text Content
 
@@ -714,6 +870,8 @@ Parameters:
 
 ## File System
 
+Docs: [File System](https://agentclientprotocol.com/protocol/file-system) • GitHub: [docs/protocol/file-system.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/file-system.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+
 The filesystem methods allow Agents to read and write text files within the Client's environment. These methods enable Agents to access unsaved editor state and allow Clients to track file modifications made during agent execution.
 
 ### Checking Support
@@ -792,6 +950,8 @@ The Client responds with an empty result on success:
 
 ## Tool Calls
 
+Docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls) • GitHub: [docs/protocol/tool-calls.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/tool-calls.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+
 Tool calls represent actions that language models request Agents to perform during a prompt turn. When an LLM determines it needs to interact with external systems—like reading files, running code, or fetching data—it generates tool calls that the Agent executes on its behalf.
 
 Agents report tool calls through `session/update` notifications, allowing Clients to display real-time progress and results to users.
@@ -829,6 +989,7 @@ Parameters:
   - `execute` - Running commands or code
   - `think` - Internal reasoning or planning
   - `fetch` - Retrieving external data
+  - `switch_mode` - Switching the current session mode
   - `other` - Other tool types (default)
 - `status` (ToolCallStatus): The current execution status (defaults to `pending`)
 - `content` (ToolCallContent[]): Content produced by the tool call
@@ -1005,6 +1166,8 @@ Parameters:
 - `line` (number): Optional line number within the file
 
 ## Terminals
+
+Docs: [Terminals](https://agentclientprotocol.com/protocol/terminals) • GitHub: [docs/protocol/terminals.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/terminals.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
 
 The terminal methods allow Agents to execute shell commands within the Client's environment. These methods enable Agents to run build processes, execute scripts, and interact with command-line tools while providing real-time output streaming and process control.
 
@@ -1220,6 +1383,8 @@ If the terminal was added to a tool call, the client **SHOULD** continue to disp
 
 ## Session Modes
 
+Docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes) • GitHub: [docs/protocol/session-modes.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/session-modes.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+
 Agents can provide a set of modes they can operate in. Modes often affect the system prompts used, the availability of tools, and whether they request permission before running.
 
 ### Initial State
@@ -1317,6 +1482,8 @@ This "switch mode" tool will usually request permission before running, which it
 
 ## Agent Plan
 
+Docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan) • GitHub: [docs/protocol/agent-plan.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/agent-plan.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+
 Plans are execution strategies for complex tasks that require multiple steps.
 
 Agents may share plans with Clients through `session/update` notifications, providing real-time visibility into their thinking and progress.
@@ -1383,6 +1550,8 @@ The Agent **MUST** send a complete list of all plan entries in each update and t
 Plans can evolve during execution. The Agent **MAY** add, remove, or modify plan entries as it discovers new requirements or completes tasks, allowing it to adapt based on what it learns.
 
 ## Slash Commands
+
+Docs: [Slash Commands](https://agentclientprotocol.com/protocol/slash-commands) • GitHub: [docs/protocol/slash-commands.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/slash-commands.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
 
 Agents can advertise a set of slash commands that users can invoke. These commands provide quick access to specific agent capabilities and workflows. Commands are run as part of regular prompt requests where the Client includes the command text in the prompt.
 
@@ -1465,6 +1634,8 @@ Commands are included as regular user messages in prompt requests:
 The Agent recognizes the command prefix and processes it accordingly. Commands may be accompanied by any other user message content types (images, audio, etc.) in the same prompt array.
 
 ## Extensibility
+
+Docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility) • GitHub: [docs/protocol/extensibility.mdx](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/docs/protocol/extensibility.mdx) • Schema: [schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
 
 The Agent Client Protocol provides built-in extension mechanisms that allow implementations to add custom functionality while maintaining compatibility with the core protocol. These mechanisms ensure that Agents and Clients can innovate without breaking interoperability.
 
@@ -1564,6 +1735,39 @@ Implementations **SHOULD** use the `_meta` field in capability objects to advert
 
 This allows implementations to negotiate custom features during initialization without breaking compatibility with standard Clients and Agents.
 
+## Transport
+
+- Protocol transport is JSON-RPC 2.0 over stdio.
+- Implementations MUST write only JSON-RPC frames to stdout; logs and diagnostics should go to stderr.
+- Framing is implementation-defined. Common approaches:
+  - Newline-delimited JSON objects (one JSON object per line)
+  - LSP-style `Content-Length` headers followed by JSON body
+- Choose one framing and keep both sides consistent.
+
+### Wire Format Examples
+
+NDJSON (newline-delimited JSON), UTF-8
+```text
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":true}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true}},"authMethods":[{"id":"api_key","name":"API Key"}]}}
+```
+
+LSP-style Content-Length framing, UTF-8
+```text
+Content-Length: <byte-count>\r\n
+\r\n
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":true}}}
+
+Content-Length: <byte-count>\r\n
+\r\n
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true}},"authMethods":[]}}
+```
+
+Notes
+- Use UTF-8 everywhere. Ensure writers flush promptly to avoid head-of-line blocking.
+- With NDJSON, write one complete JSON object per line and avoid printing logs to stdout.
+- With Content-Length, the byte-count is the number of bytes in the UTF-8 JSON body, not characters.
+
 ## Supported Editors
 
 - [Zed](https://zed.dev/docs/ai/external-agents)
@@ -1580,8 +1784,226 @@ This allows implementations to negotiate custom features during initialization w
 ## Libraries and Schema
 
 - **Rust**: [`agent-client-protocol`](https://crates.io/crates/agent-client-protocol)
+  - Docs: [Rust Library](https://agentclientprotocol.com/libraries/rust)
+  - GitHub: [rust/](https://github.com/zed-industries/agent-client-protocol/tree/HEAD/rust)
 - **TypeScript**: [`@zed-industries/agent-client-protocol`](https://www.npmjs.com/package/@zed-industries/agent-client-protocol)
-- **JSON Schema**: [schema.json](./schema/schema.json)
+  - Docs: [TypeScript Library](https://agentclientprotocol.com/libraries/typescript)
+  - GitHub: [typescript/](https://github.com/zed-industries/agent-client-protocol/tree/HEAD/typescript)
+- **JSON Schema**: [schema.json](./schema/schema.json) • Docs: [Schema](https://agentclientprotocol.com/protocol/schema) • GitHub: [schema/schema.json](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/schema/schema.json)
+  - TypeScript bindings (GitHub): [typescript/schema.ts](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/typescript/schema.ts)
+  - TypeScript protocol types (GitHub): [typescript/acp.ts](https://github.com/zed-industries/agent-client-protocol/blob/HEAD/typescript/acp.ts)
+
+## Type Reference
+
+This appendix summarizes core types to implement the protocol. See the JSON Schema for complete details and validation constraints.
+
+### Identifiers
+
+- `SessionId` (string): Unique session identifier
+- `ToolCallId` (string): Unique ID for a tool call within a session
+- `TerminalId` (string): Terminal instance identifier
+- `AuthMethodId` (string): Authentication method identifier
+- `PermissionOptionId` (string): Permission option identifier
+- `SessionModeId` (string): Session mode identifier
+
+### Capabilities
+
+- `ClientCapabilities`
+  - `fs.readTextFile` (bool, default false)
+  - `fs.writeTextFile` (bool, default false)
+  - `terminal` (bool, default false)
+- `AgentCapabilities`
+  - `loadSession` (bool, default false)
+  - `promptCapabilities` (object)
+    - `image` (bool, default false)
+    - `audio` (bool, default false)
+    - `embeddedContext` (bool, default false)
+  - `mcpCapabilities` (object)
+    - `http` (bool, default false)
+    - `sse` (bool, default false)
+
+### MCP Servers
+
+- Stdio: `{ name, command, args[], env[] }`
+- HTTP: `{ type: "http", name, url, headers[] }`
+- SSE: `{ type: "sse", name, url, headers[] }` (deprecated by MCP spec)
+- `EnvVariable`: `{ name, value }`
+- `HttpHeader`: `{ name, value }`
+
+### Content Blocks
+
+- `text`: `{ type: "text", text, annotations? }`
+- `image`: `{ type: "image", mimeType, data, uri?, annotations? }`
+- `audio`: `{ type: "audio", mimeType, data, annotations? }`
+- `resource_link`: `{ type: "resource_link", uri, name, mimeType?, title?, description?, size?, annotations? }`
+- `resource`: `{ type: "resource", resource: EmbeddedResourceResource, annotations? }`
+  - `TextResourceContents`: `{ uri, text, mimeType? }`
+  - `BlobResourceContents`: `{ uri, blob, mimeType? }`
+
+### Authentication
+
+- `AuthMethod`: `{ id, name, description? }`
+
+### Tool Calls
+
+- `ToolKind`: `read | edit | delete | move | search | execute | think | fetch | switch_mode | other`
+- `ToolCallStatus`: `pending | in_progress | completed | failed`
+- `ToolCall` fields: `toolCallId`, `title`, `kind?`, `status?`, `content?[]`, `locations?[]`, `rawInput?`, `rawOutput?`
+- `ToolCallUpdate` updates: `toolCallId` required; other fields optional as replacements/updates
+- `ToolCallContent` variants:
+  - `content`: `{ type: "content", content: ContentBlock }`
+  - `diff`: `{ type: "diff", path, oldText?, newText }`
+  - `terminal`: `{ type: "terminal", terminalId }`
+- `ToolCallLocation`: `{ path, line? }`
+
+### Plans
+
+- `PlanEntry`: `{ content, priority: PlanEntryPriority, status: PlanEntryStatus }`
+- `PlanEntryPriority`: `high | medium | low`
+- `PlanEntryStatus`: `pending | in_progress | completed`
+
+### Permissions
+
+- `PermissionOption`: `{ optionId, name, kind }`
+- `PermissionOptionKind`: `allow_once | allow_always | reject_once | reject_always`
+- `RequestPermissionOutcome`:
+  - `cancelled`: `{ outcome: "cancelled" }`
+  - `selected`: `{ outcome: "selected", optionId }`
+
+### Terminals
+
+- `terminal/create` request: `{ sessionId, command, args?[], env?[], cwd?, outputByteLimit? }`
+- `terminal/output` response: `{ output, truncated, exitStatus?{ exitCode?, signal? } }`
+- `terminal/wait_for_exit` response: `{ exitCode?, signal? }`
+
+### Validation Tips
+
+- Use the official JSON Schema (`schema/schema.json`) to validate requests, responses, and notifications.
+- Recommended libraries:
+  - TypeScript: `ajv@^8` (strict mode), `@types` for generated types
+  - Rust: `schemars` (for generation) + `jsonschema` crate or custom validation
+  - Python: `jsonschema`
+- Enforce no custom fields at the root of spec-defined types; use `_meta` for extensions.
+- Validate numeric bounds (e.g., `ProtocolVersion` is `uint16`).
+- Treat omitted capabilities as unsupported; do not assume defaults beyond the schema.
+- In development, enable strict mode and fail fast; in production, prefer logging and graceful degradation for unrecognized `SessionUpdate` variants or extension data.
+
+## Reference Flows
+
+### Client Happy Path
+
+Pseudo-code for a minimal, compliant client (editor/host):
+
+```text
+spawn_agent_subprocess()
+open stdio as (agent_stdin, agent_stdout)
+
+// Initialize
+send { jsonrpc: "2.0", id: 1, method: "initialize", params: {
+  protocolVersion: 1,
+  clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true }
+}}
+resp = recv(id: 1)
+assert resp.result.protocolVersion == 1
+authMethods = resp.result.authMethods
+
+// Optionally authenticate if needed
+try_new = send { id: 2, method: "session/new", params: { cwd: ABS_PATH, mcpServers: [] } }
+if error == auth_required and authMethods not empty:
+  choose methodId from authMethods
+  send { id: 3, method: "authenticate", params: { methodId } }
+  recv(id: 3)
+  send { id: 4, method: "session/new", params: { cwd: ABS_PATH, mcpServers: [] } }
+resp_new = recv(id: 2|4)
+sessionId = resp_new.result.sessionId
+
+// Prompt turn
+send { id: 5, method: "session/prompt", params: { sessionId, prompt: [ { type: "text", text: "Hello" } ] } }
+
+// Stream updates
+loop recv notifications:
+  if method == "session/update":
+    switch update.sessionUpdate:
+      case "agent_message_chunk": render content
+      case "plan": render entries
+      case "tool_call": show pending; maybe ask permission
+      case "tool_call_update": update status/content/locations
+      case "available_commands_update": update UI palette
+      case "current_mode_update": reflect mode change
+  else if response to id:5 arrives:
+    assert result.stopReason in { end_turn, max_tokens, max_turn_requests, refusal, cancelled }
+    break
+
+// (Optional) file system and terminal requests received from agent
+on request fs/read_text_file | fs/write_text_file | terminal/*: handle per capability
+
+// Cancellation (user initiated)
+on user_cancel: send { method: "session/cancel", params: { sessionId } }
+```
+
+### Agent Happy Path
+
+Pseudo-code for a minimal, compliant agent:
+
+```text
+loop read JSON-RPC frames:
+  switch method:
+    case "initialize":
+      reply { result: { protocolVersion: 1, agentCapabilities: { promptCapabilities: { image: false, audio: false, embeddedContext: true } }, authMethods: [] } }
+
+    case "authenticate":
+      // Validate provided methodId; configure credentials
+      reply { result: {} }
+
+    case "session/new":
+      validate cwd absolute; store session; connect MCP if provided
+      reply { result: { sessionId } }
+
+    case "session/prompt":
+      // Start a prompt turn
+      // 1) (optional) share plan
+      notify session/update { plan: { entries: [...] } }
+      // 2) stream model output
+      notify session/update { agent_message_chunk: { content: { type: "text", text: "Working..." } } }
+      // 3) (optional) tools
+      notify session/update { tool_call: { toolCallId, title, kind, status: "pending" } }
+      //    (optional) ask for permission via session/request_permission
+      //    execute tool; stream updates
+      notify session/update { tool_call_update: { toolCallId, status: "in_progress" } }
+      notify session/update { tool_call_update: { toolCallId, status: "completed", content: [...] } }
+      // 4) end turn
+      reply { result: { stopReason: "end_turn" } }
+
+    case "session/cancel":
+      abort outstanding LLM/tool work; flush pending updates
+      // ensure prompt() returns { stopReason: "cancelled" }
+
+    case terminal/* or fs/* (client-side methods):
+      // Not applicable here; agent calls these on the client, not vice versa
+```
+
+## Compliance
+
+### Agent Checklist
+
+- Implement: `initialize`, `session/new`, `session/prompt`, `session/cancel`
+- Stream updates via `session/update` using the variants defined above
+- Respect `ClientCapabilities` and only call supported Client methods
+- Support `ContentBlock::Text` and `ContentBlock::ResourceLink` in prompts
+- Enforce absolute paths and 1-based line numbers
+- Return `StopReason` on `session/prompt` and `cancelled` after `session/cancel`
+- Advertise `authMethods` if authentication is required; accept `authenticate`
+- Optional: `session/load`, modes (`session/set_mode` + mode updates), terminals, slash commands
+
+### Client Checklist
+
+- Implement: `session/request_permission`
+- Optional: `fs/read_text_file`, `fs/write_text_file`, `terminal/*`
+- Spawn agent subprocess and connect via JSON-RPC over stdio
+- Provide absolute `cwd` for sessions and treat it as an execution boundary
+- Display session updates (messages, plans, tool calls, terminals)
+- Handle permission requests and cancellation reliably
+- Never write non-JSON to stdout; use stderr for logs
 
 ---
 

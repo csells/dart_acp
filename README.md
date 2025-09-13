@@ -1,8 +1,10 @@
 ## dart_acp
 
-This repository contains a Dart ACP client library that talks to an ACP agent
-over stdio JSON‑RPC. It handles transport, session lifecycle, routing updates,
-workspace jail, permissions, and optional terminal provider.
+This repository contains a Dart package that implements the client side of [the
+Agent Client Protocol
+(ACP)](https://github.com/zed-industries/agent-client-protocol) that talks to an
+ACP agent over stdio JSON‑RPC. It handles transport, session lifecycle, routing
+updates, workspace jail, permissions, and optional terminal provider.
 
 ### Specs
 
@@ -22,20 +24,37 @@ workspace jail, permissions, and optional terminal provider.
   system, terminal, and schema.
 
 ### Features
-- **Latest ACP Protocol Support**: Full compatibility with the latest Agent Client Protocol specification from agentclientprotocol.com.
+- **Latest ACP Protocol Support**: Full compatibility with the latest Agent
+  Client Protocol specification from agentclientprotocol.com.
 - **Stdio transport**: JSON‑RPC over stdin/stdout between client and agent.
-- **JSON‑RPC peer**: Bidirectional communication with client callbacks (fs.read/write, permission prompts, terminal lifecycle).
-- **Enhanced Session Management**: `initialize`, `newSession`/`loadSession`, `prompt` streaming with typed `AcpUpdate` events, `cancel`, and session mode support.
-- **Protocol Version Enforcement**: Client verifies agent's protocol version meets minimum requirements (currently v1).
-- **Comprehensive Providers**: FS jail enforcement, permission policies, and terminal process management.
-- **Plan Handling with Priorities**: Support for execution plans with high/medium/low priority levels and proper status tracking (pending/in_progress/completed).
-- **Enhanced Tool Call Support**: Full tool kind categorization (read/edit/delete/move/search/execute/think/fetch/other), location tracking, and improved status handling (pending/in_progress/completed/failed/cancelled).
-- **Slash Command Support**: Available commands with input hints for enhanced user experience.
-- **Session Modes**: Agent operating mode discovery, listing, and switching capabilities.
-- **Extensibility**: Meta field support foundation for custom protocol extensions.
-- **Permission Handling**: Respects configured permissions from AcpConfig and CLI arguments, properly denying operations when permissions are not granted.
-- **Terminal Integration**: Terminal events stream for UIs (created/output/exited/released) with non‑standard `clientCapabilities.terminal: true` advertisement.
-- **Rich Tool Metadata**: Tool calls display titles, file locations, and raw input/output snippets for better debugging and transparency.
+- **JSON‑RPC peer**: Bidirectional communication with client callbacks
+  (fs.read/write, permission prompts, terminal lifecycle).
+- **Enhanced Session Management**: `initialize`, `newSession`/`loadSession`,
+  `prompt` streaming with typed `AcpUpdate` events, `cancel`, and session mode
+  support.
+- **Protocol Version Enforcement**: Client verifies agent's protocol version
+  meets minimum requirements (currently v1).
+- **Comprehensive Providers**: FS jail enforcement, permission policies, and
+  terminal process management.
+- **Plan Handling with Priorities**: Support for execution plans with
+  high/medium/low priority levels and proper status tracking
+  (pending/in_progress/completed).
+- **Enhanced Tool Call Support**: Full tool kind categorization
+  (read/edit/delete/move/search/execute/think/fetch/other), location tracking,
+  and improved status handling (pending/in_progress/completed/failed/cancelled).
+- **Slash Command Support**: Available commands with input hints for enhanced
+  user experience.
+- **Session Modes**: Agent operating mode discovery, listing, and switching
+  capabilities.
+- **Extensibility**: Meta field support foundation for custom protocol
+  extensions.
+- **Permission Handling**: Respects configured permissions from AcpConfig and
+  CLI arguments, properly denying operations when permissions are not granted.
+- **Terminal Integration**: Terminal events stream for UIs
+  (created/output/exited/released) with non‑standard
+  `clientCapabilities.terminal: true` advertisement.
+- **Rich Tool Metadata**: Tool calls display titles, file locations, and raw
+  input/output snippets for better debugging and transparency.
 
 ### Quick Start (Example CLI)
 ```bash
@@ -133,9 +152,9 @@ Examples:
   /tmp/sid)" "Continue"`
 - Resume with stdin: `echo "Continue" | dart example/main.dart -a claude-code
   --resume "$(cat /tmp/sid)"`
-- Note: Session resumption (`--resume`) is only available if the agent advertises
-  `loadSession` capability. The CLI will exit with an error if you attempt to
-  resume with an agent that doesn't support it.
+- Note: Session resumption (`--resume`) is only available if the agent
+  advertises `loadSession` capability. The CLI will exit with an error if you
+  attempt to resume with an agent that doesn't support it.
 
 ### Agent Selection
 - `-a, --agent <name>` selects an entry from `agent_servers` in
@@ -266,10 +285,10 @@ final client = AcpClient(
   ),
 );
 ```
-```
 ### Slash Commands
 
-Agents can expose slash commands (like `/help`, `/status`, etc.) via the ACP protocol. The CLI provides discovery and execution of these commands.
+Agents can expose slash commands (like `/help`, `/status`, etc.) via the ACP
+protocol. The CLI provides discovery and execution of these commands.
 
 #### Discovering Available Commands
 

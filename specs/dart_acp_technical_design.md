@@ -89,6 +89,17 @@ flowchart LR
 - **session/set_mode**: Switch between agent operating modes when supported (extension).
 - **Agent→Client**: Handle `read_text_file`, `write_text_file`, `session/request_permission`, and terminal lifecycle (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`) via the configured providers.
 
+### 4.1 Tool Call Update Handling
+
+The SessionManager properly implements ACP's tool call update semantics:
+
+- **Tool Call Tracking**: Maintains a `_toolCalls` map indexed by `[sessionId][toolCallId]` to track all tool calls
+- **New Tool Calls** (`tool_call`): Creates and stores a new `ToolCall` object in the tracking map
+- **Tool Call Updates** (`tool_call_update`): Merges update fields into the existing tool call using `ToolCall.merge()`
+- **Merge Semantics**: Only non-null fields from updates override existing values, preserving metadata like `kind` and `title`
+
+This implementation follows the pattern used by Zed's ACP client and ensures tool call metadata is preserved throughout the update lifecycle.
+
 Notes
 - The wire method names are underscored without a namespace per ACP examples (e.g., `read_text_file`, `write_text_file`). Capability keys in `initialize.clientCapabilities` use camelCase (e.g., `readTextFile`).
 
@@ -616,3 +627,8 @@ Terminal lifecycle methods remain standard (`create_terminal`, `terminal_output`
 - Corrected terminal callback names to ACP examples (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`).
 - Clarified and implemented `read_text_file` windowing semantics (1‑based `line`, `limit` as count).
 - Added FS diagnostics in `SessionManager` for better traceability.
+- **Tool Call Update Merging** (Major Fix): Implemented proper merge semantics where `tool_call_update` merges fields into existing tool calls rather than replacing them entirely. Added `ToolCall.merge()` method and `_toolCalls` tracking map in SessionManager.
+- **CLI Test Path Handling**: Standardized all CLI tests to use `path.join(Directory.current.path, 'example', 'main.dart')` for consistent subprocess spawning.
+- **Early Process Exit Detection**: Added 100ms delay in StdioTransport to detect and report agent crashes with meaningful error messages.
+- **Session Update Replay**: Fixed TurnEnded markers to be included in replay buffer for proper session resumption.
+- **Invalid Session Handling**: Changed to throw ArgumentError for invalid session IDs instead of returning empty streams.

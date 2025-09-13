@@ -3,23 +3,17 @@
 /// Input specification for available commands.
 class AvailableCommandInput {
   /// Creates an available command input specification.
-  const AvailableCommandInput({
-    this.hint,
-  });
+  const AvailableCommandInput({this.hint});
 
   /// Create from JSON.
   factory AvailableCommandInput.fromJson(Map<String, dynamic> json) =>
-      AvailableCommandInput(
-        hint: json['hint'] as String?,
-      );
+      AvailableCommandInput(hint: json['hint'] as String?);
 
   /// Hint to display when input hasn't been provided yet.
   final String? hint;
 
   /// Convert to JSON.
-  Map<String, dynamic> toJson() => {
-    if (hint != null) 'hint': hint,
-  };
+  Map<String, dynamic> toJson() => {if (hint != null) 'hint': hint};
 }
 
 /// Available command that can be executed.
@@ -38,8 +32,10 @@ class AvailableCommand {
         name: json['name'] as String? ?? '',
         description: json['description'] as String?,
         parameters: json['parameters'] as Map<String, dynamic>?,
-        input: json['input'] != null 
-            ? AvailableCommandInput.fromJson(json['input'] as Map<String, dynamic>)
+        input: json['input'] != null
+            ? AvailableCommandInput.fromJson(
+                json['input'] as Map<String, dynamic>,
+              )
             : null,
       );
 
@@ -68,10 +64,10 @@ class AvailableCommand {
 enum PlanEntryPriority {
   /// High priority.
   high,
-  
+
   /// Medium priority.
   medium,
-  
+
   /// Low priority.
   low;
 
@@ -97,10 +93,10 @@ enum PlanEntryPriority {
 enum PlanEntryStatus {
   /// Entry is pending execution.
   pending,
-  
+
   /// Entry is currently in progress.
   inProgress,
-  
+
   /// Entry has been completed.
   completed;
 
@@ -123,7 +119,8 @@ enum PlanEntryStatus {
     switch (this) {
       case PlanEntryStatus.inProgress:
         return 'in_progress';
-      default:
+      case PlanEntryStatus.pending:
+      case PlanEntryStatus.completed:
         return name;
     }
   }

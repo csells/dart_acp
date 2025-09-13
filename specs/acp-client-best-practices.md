@@ -46,9 +46,11 @@ This document covers all three categories but clearly marks which is which.
 - Process model: The client runs the agent as a subprocess and connects over the
   agent’s stdio.
 
-Dart notes
+Dart notes (dart_acp implementation)
 - Use `utf8` + `LineSplitter` on stdin and `stdout.writeln` for outbound frames.
 - Keep logging on stderr to avoid corrupting the JSON stream.
+- StdioTransport includes 100ms delay after spawn to detect early process exit with meaningful errors.
+- LineChannel wrapper handles newline-delimited JSON frames.
 
 Sources
 - Overview: https://agentclientprotocol.com/overview/introduction
@@ -549,6 +551,13 @@ Requirements
   (`raw_input`) and locations.
 - Clients SHOULD show diffs as first‑class UI, with accept/reject affordances.
 - Clients SHOULD show terminal output incrementally where provided.
+- Clients MUST properly merge tool call updates: `tool_call` creates new entries,
+  `tool_call_update` merges non-null fields into existing tool calls.
+
+Dart notes (dart_acp implementation)
+- SessionManager maintains `_toolCalls` map indexed by `[sessionId][toolCallId]`
+- ToolCall class includes `merge()` method that only updates non-null fields
+- Distinguishes between `tool_call` (new) and `tool_call_update` (merge) session updates
 
 Zed example (excerpt): crates/acp_thread/src/acp_thread.rs
 
@@ -1093,6 +1102,11 @@ Minimal conformance checklist (client)
 - Cancellation: `session/cancel` honored; pending permission prompts resolved;
   maps abort exceptions to `cancelled`
 - Errors: uses ACP error codes; logs structured errors; avoids leaking secrets
+
+Dart notes (dart_acp testing)
+- CLI tests must use absolute paths when spawning subprocesses
+- Use `path.join(Directory.current.path, 'example', 'main.dart')` for consistent paths
+- E2E tests require real agents configured in `test/test_settings.json`
 
 Trace fixture format (for tests)
 - JSONL, each line a JSON object:

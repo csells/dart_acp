@@ -27,7 +27,7 @@ We also keep a small set of spec sanity tests and low‑level unit tests for sha
 - Spec sanity and shared utilities
   - Spec coverage: `test/acp_spec_coverage_test.dart`
   - Transport: `test/stdin_transport_test.dart`
-  - FS jail: `test/unit_fs_jail_test.dart`
+  - FS jail: `test/fs_jail_unit_test.dart`
 - Helpers and fixtures
   - Capability gating: `test/helpers/adapter_caps.dart`
   - Echo agent for tests: `test/agents/echo_agent.dart`
@@ -93,7 +93,7 @@ Unit tests run quickly, cover logic in isolation, and may use mocks.
 - Ensures the low‑level transport channel read/write behavior and protocol taps work independently of higher layers.
 
 ### FS Jail Unit
-- File: `test/unit_fs_jail_test.dart`
+- File: `test/fs_jail_unit_test.dart`
 - Validates workspace jail behavior and path handling separate from AcpClient/CLI flows.
 
 ## Helpers & Fixtures

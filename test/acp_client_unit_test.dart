@@ -7,14 +7,6 @@ import 'package:dart_acp/src/security/workspace_jail.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('AcpClient helpers', () {
-    test('text content helper', () {
-      final b = AcpClient.text('hi');
-      expect(b['type'], 'text');
-      expect(b['text'], 'hi');
-    });
-  });
-
   group('AcpConfig', () {
     test('creates with required fields', () {
       final config = AcpConfig(
@@ -86,8 +78,16 @@ void main() {
       const update = PlanUpdate(
         Plan(
           entries: [
-            PlanEntry(content: 'Step 1', priority: PlanEntryPriority.high, status: PlanEntryStatus.pending),
-            PlanEntry(content: 'Step 2', priority: PlanEntryPriority.medium, status: PlanEntryStatus.inProgress),
+            PlanEntry(
+              content: 'Step 1',
+              priority: PlanEntryPriority.high,
+              status: PlanEntryStatus.pending,
+            ),
+            PlanEntry(
+              content: 'Step 2',
+              priority: PlanEntryPriority.medium,
+              status: PlanEntryStatus.inProgress,
+            ),
           ],
         ),
       );
