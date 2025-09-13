@@ -474,6 +474,80 @@ void main() {
       );
     }
 
+    test(
+      'permission configuration is respected',
+      () async {
+        // Test that permissions configured in AcpConfig are properly respected
+        final dir = await Directory.systemTemp.createTemp('acp_perm_cfg_');
+        addTearDown(() async {
+          if (dir.existsSync()) {
+            await dir.delete(recursive: true);
+          }
+        });
+        
+        File(path.join(dir.path, 'test.txt')).writeAsStringSync('Test data');
+        
+        // Create a client with specific permission configuration
+        final permissionRequests = <String>[];
+        final client = await createClient(
+          'claude-code',
+          workspaceRoot: dir.path,
+          permissionProvider: DefaultPermissionProvider(
+            onRequest: (opts) async {
+              permissionRequests.add(opts.toolKind ?? opts.toolName);
+              // Deny write operations, allow read
+              if ((opts.toolKind?.contains('write') ?? false) ||
+                  opts.toolName.contains('write')) {
+                return PermissionOutcome.deny;
+              }
+              return PermissionOutcome.allow;
+            },
+          ),
+          capabilities: const AcpCapabilities(
+            fs: FsCapabilities(readTextFile: true, writeTextFile: true),
+          ),
+        );
+        addTearDown(client.dispose);
+        
+        final sessionId = await client.newSession();
+        final updates = <AcpUpdate>[];
+        
+        // Ask to both read and write
+        await client
+            .prompt(
+              sessionId: sessionId,
+              content: [
+                AcpClient.text(
+                  'Read test.txt and then write "Modified" to output.txt',
+                ),
+              ],
+            )
+            .forEach(updates.add);
+        
+        // Verify permission requests were made
+        expect(permissionRequests.isNotEmpty, isTrue,
+               reason: 'Permission provider should have been consulted');
+        
+        // Check that the agent handled the denial appropriately
+        final messages = updates
+            .whereType<MessageDelta>()
+            .expand((m) => m.content)
+            .whereType<TextContent>()
+            .map((t) => t.text)
+            .join()
+            .toLowerCase();
+        
+        // Should have read the file (allowed)
+        expect(messages.contains('test data') || messages.contains('test.txt'),
+               isTrue, reason: 'Agent should have been able to read the file');
+        
+        // Should NOT have created output.txt (denied)
+        expect(File(path.join(dir.path, 'output.txt')).existsSync(), isFalse,
+               reason: 'Write should have been denied');
+      },
+      timeout: const Timeout(Duration(seconds: 60)),
+    );
+
     test('permission denial is respected', () async {
       // Test that when permissions are denied, operations fail appropriately
       final dir = await Directory.systemTemp.createTemp('acp_perm_test_');
@@ -564,6 +638,120 @@ void main() {
           ),
         ),
       );
+    });
+
+    // Note: Minimum protocol version enforcement test is skipped because
+    // AcpConfig.minimumProtocolVersion is a static constant (currently 1)
+    // and all real agents return protocol version 1, so we cannot test
+    // the rejection case without modifying the source code.
+
+    test('richer tool metadata display', () async {
+      // Test that tool calls include title, locations, raw_input, raw_output
+      final dir = await Directory.systemTemp.createTemp('acp_tool_meta_');
+      addTearDown(() async {
+        if (dir.existsSync()) {
+          await dir.delete(recursive: true);
+        }
+      });
+      
+      File(path.join(dir.path, 'test.txt')).writeAsStringSync('Test content');
+      
+      final client = await createClient(
+        'claude-code',
+        workspaceRoot: dir.path,
+        permissionProvider: DefaultPermissionProvider(
+          onRequest: (opts) async => PermissionOutcome.allow,
+        ),
+      );
+      addTearDown(client.dispose);
+      
+      final sessionId = await client.newSession();
+      final updates = <AcpUpdate>[];
+      
+      await client
+          .prompt(
+            sessionId: sessionId,
+            content: [
+              AcpClient.text('Read test.txt and tell me what it contains'),
+            ],
+          )
+          .forEach(updates.add);
+      
+      // Find tool call updates
+      final toolCalls = updates.whereType<ToolCallUpdate>();
+      expect(toolCalls.isNotEmpty, isTrue, reason: 'No tool calls observed');
+      
+      // Check for richer metadata
+      final readCall = toolCalls.firstWhere(
+        (tc) => tc.toolCall.kind == 'read' || 
+                (tc.toolCall.name?.contains('read') ?? false),
+        orElse: () => toolCalls.first,
+      );
+      
+      // Verify at least some metadata fields are present
+      // Note: Not all fields may be present in every tool call
+      final hasMetadata = 
+          readCall.toolCall.title != null ||
+          readCall.toolCall.locations != null ||
+          readCall.toolCall.rawInput != null ||
+          readCall.toolCall.rawOutput != null;
+      
+      expect(hasMetadata, isTrue,
+             reason: 'Tool call should have at least some metadata fields');
+    });
+
+    test('current_mode_update routing', () async {
+      // Test that current_mode_update events are properly routed as ModeUpdate
+      final client = await createClient('claude-code');
+      addTearDown(client.dispose);
+      
+      final sessionId = await client.newSession();
+      
+      // Get available modes
+      final modes = client.sessionModes(sessionId);
+      if (modes == null || modes.availableModes.isEmpty) {
+        markTestSkipped('No modes available for testing');
+        return;
+      }
+      
+      // Find a mode different from current
+      final currentMode = modes.currentModeId;
+      final targetMode = modes.availableModes.firstWhere(
+        (m) => m.id != currentMode,
+        orElse: () => modes.availableModes.first,
+      );
+      
+      if (targetMode.id == currentMode) {
+        markTestSkipped('Only one mode available, cannot test mode change');
+        return;
+      }
+      
+      // Set up listener for mode updates
+      final updates = <AcpUpdate>[];
+      final sub = client
+          .prompt(
+            sessionId: sessionId,
+            content: [AcpClient.text('Hello')],
+          )
+          .listen(updates.add);
+      
+      // Change mode (this should trigger current_mode_update)
+      await client.setMode(sessionId: sessionId, modeId: targetMode.id);
+      
+      // Wait a bit for the update to be routed
+      await Future.delayed(const Duration(milliseconds: 500));
+      await sub.cancel();
+      
+      // Check if we received a ModeUpdate
+      final modeUpdates = updates.whereType<ModeUpdate>();
+      expect(
+        modeUpdates.isNotEmpty,
+        isTrue,
+        reason: 'No ModeUpdate received after changing mode',
+      );
+      
+      final modeUpdate = modeUpdates.first;
+      expect(modeUpdate.currentModeId, equals(targetMode.id));
     });
 
     group('Terminal Operations', () {

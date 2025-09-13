@@ -1,18 +1,6 @@
-import 'dart:io';
+import 'package:args/args.dart';
 
 enum OutputMode { text, simple, jsonl }
-
-OutputMode parseOutputMode(String v) {
-  final value = v.toLowerCase();
-  if (value == 'text') return OutputMode.text;
-  if (value == 'simple') return OutputMode.simple;
-  if (value == 'json' || value == 'jsonl') return OutputMode.jsonl;
-  throw ArgumentError('Unknown output mode: $v');
-}
-
-extension OutputModeX on OutputMode {
-  bool get isJsonLike => this == OutputMode.jsonl;
-}
 
 class CliArgs {
   CliArgs({
@@ -32,96 +20,108 @@ class CliArgs {
   });
 
   factory CliArgs.parse(List<String> argv) {
-    String? agent;
-    String? settingsPath;
-    var output = OutputMode.text;
-    var help = false;
-    var yolo = false;
-    var write = false;
-    var listCommands = false;
-    var listModes = false;
-    var listCaps = false;
-    String? modeId;
-    String? resume;
-    String? savePath;
+    final parser = ArgParser()
+      ..addFlag('help', abbr: 'h', help: 'Show this help and exit')
+      ..addOption('agent', abbr: 'a', help: 'Select agent from settings.json')
+      ..addOption(
+        'output',
+        abbr: 'o',
+        help: 'Output mode',
+        allowed: ['text', 'simple', 'json', 'jsonl'],
+        defaultsTo: 'text',
+      )
+      ..addOption('settings', help: 'Use a specific settings.json')
+      ..addFlag('yolo', 
+          help: 'Enable read-everywhere and write-enabled')
+      ..addFlag('write', 
+          help: 'Enable write capability (still confined to CWD)')
+      ..addFlag('list-commands', 
+          help: 'Print available slash commands (no prompt sent)')
+      ..addFlag('list-modes', 
+          help: 'Print available session modes (no prompt sent)')
+      ..addFlag('list-caps', 
+          help: 'Print agent capabilities from initialize (no prompt sent)')
+      ..addOption('mode', help: 'Set session mode after creation')
+      ..addOption('resume', help: 'Resume an existing session (replay)')
+      ..addOption('save-session', help: 'Save new sessionId to file');
 
-    final rest = <String>[];
-    for (var i = 0; i < argv.length; i++) {
-      final a = argv[i];
-      if (a == '-h' || a == '--help') {
-        help = true;
-      } else if (a == '--settings') {
-        if (i + 1 >= argv.length) {
-          throw ArgumentError('--settings requires a path');
-        }
-        settingsPath = argv[++i];
-      } else if (a == '-a' || a == '--agent') {
-        if (i + 1 >= argv.length) {
-          throw ArgumentError('--agent requires a name');
-        }
-        agent = argv[++i];
-      } else if (a == '-o' || a == '--output') {
-        if (i + 1 >= argv.length) {
-          throw ArgumentError('--output requires a mode');
-        }
-        output = parseOutputMode(argv[++i]);
-      } else if (a == '--yolo') {
-        yolo = true;
-      } else if (a == '--write') {
-        write = true;
-      } else if (a == '--list-commands') {
-        listCommands = true;
-      } else if (a == '--list-modes') {
-        listModes = true;
-      } else if (a == '--list-caps') {
-        listCaps = true;
-      } else if (a == '--mode') {
-        if (i + 1 >= argv.length) {
-          throw ArgumentError('--mode requires a mode id');
-        }
-        modeId = argv[++i];
-      } else if (a == '--resume') {
-        if (i + 1 >= argv.length) {
-          throw ArgumentError('--resume requires a sessionId');
-        }
-        resume = argv[++i];
-      } else if (a == '--save-session') {
-        if (i + 1 >= argv.length) {
-          throw ArgumentError('--save-session requires a path');
-        }
-        savePath = argv[++i];
-      } else if (a.startsWith('-')) {
-        throw ArgumentError('Unknown option: $a');
-      } else {
-        rest.add(a);
-      }
+    final results = parser.parse(argv);
+    
+    // Parse output mode
+    final outputStr = results['output'] as String;
+    OutputMode output;
+    switch (outputStr) {
+      case 'simple':
+        output = OutputMode.simple;
+      case 'json':
+      case 'jsonl':
+        output = OutputMode.jsonl;
+      default:
+        output = OutputMode.text;
     }
 
+    // Collect remaining arguments as prompt
     String? prompt;
-    if (rest.isNotEmpty) {
-      prompt = rest.join(' ');
-    } else if (stdin.hasTerminal) {
-      prompt = null;
-    } else {
-      // In non-interactive mode, prompt is provided via stdin by the caller.
-      prompt = null;
+    if (results.rest.isNotEmpty) {
+      prompt = results.rest.join(' ');
     }
 
     return CliArgs(
       output: output,
-      help: help,
-      settingsPath: settingsPath,
-      agentName: agent,
-      yolo: yolo,
-      write: write,
-      listCommands: listCommands,
-      listModes: listModes,
-      listCaps: listCaps,
-      modeId: modeId,
-      resumeSessionId: resume,
-      saveSessionPath: savePath,
+      help: results['help'] as bool,
+      settingsPath: results['settings'] as String?,
+      agentName: results['agent'] as String?,
+      yolo: results['yolo'] as bool,
+      write: results['write'] as bool,
+      listCommands: results['list-commands'] as bool,
+      listModes: results['list-modes'] as bool,
+      listCaps: results['list-caps'] as bool,
+      modeId: results['mode'] as String?,
+      resumeSessionId: results['resume'] as String?,
+      saveSessionPath: results['save-session'] as String?,
       prompt: prompt,
     );
+  }
+
+  static String getUsage() {
+    final parser = ArgParser()
+      ..addFlag('help', abbr: 'h', help: 'Show this help and exit')
+      ..addOption('agent', abbr: 'a', help: 'Select agent from settings.json')
+      ..addOption(
+        'output',
+        abbr: 'o',
+        help: 'Output mode',
+        allowed: ['text', 'simple', 'json', 'jsonl'],
+        defaultsTo: 'text',
+      )
+      ..addOption('settings', help: 'Use a specific settings.json')
+      ..addFlag('yolo', 
+          help: 'Enable read-everywhere and write-enabled')
+      ..addFlag('write', 
+          help: 'Enable write capability (still confined to CWD)')
+      ..addFlag('list-commands', 
+          help: 'Print available slash commands (no prompt sent)')
+      ..addFlag('list-modes', 
+          help: 'Print available session modes (no prompt sent)')
+      ..addFlag('list-caps', 
+          help: 'Print agent capabilities from initialize (no prompt sent)')
+      ..addOption('mode', help: 'Set session mode after creation')
+      ..addOption('resume', help: 'Resume an existing session (replay)')
+      ..addOption('save-session', help: 'Save new sessionId to file');
+    
+    return '''
+Usage: dart example/main.dart [options] [--] [prompt]
+
+${parser.usage}
+
+Prompt:
+  Provide as a positional argument, or pipe via stdin.
+  Use @-mentions to add context:
+    @path, @"a file.txt", @https://example.com/file
+
+Examples:
+  dart example/main.dart -a my-agent "Summarize README.md"
+  echo "List available commands" | dart example/main.dart -o jsonl''';
   }
 
   final OutputMode output;
@@ -137,4 +137,8 @@ class CliArgs {
   final String? resumeSessionId;
   final String? saveSessionPath;
   final String? prompt;
+}
+
+extension OutputModeX on OutputMode {
+  bool get isJsonLike => this == OutputMode.jsonl;
 }

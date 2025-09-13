@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_acp/dart_acp.dart';
+import 'package:dart_acp/src/session/session_manager.dart' show InitializeResult;
 import 'package:mime/mime.dart' as mime;
 import 'package:path/path.dart' as p;
 
@@ -10,9 +11,19 @@ import 'args.dart';
 import 'settings.dart';
 
 Future<void> main(List<String> argv) async {
-  final args = CliArgs.parse(argv);
+  final CliArgs args;
+  try {
+    args = CliArgs.parse(argv);
+  } on FormatException catch (e) {
+    // ArgParser throws FormatException for unknown args
+    stderr.writeln('Error: $e');
+    stderr.writeln();
+    stdout.writeln(CliArgs.getUsage());
+    exitCode = 2;
+    return;
+  }
   if (args.help) {
-    _printUsage();
+    stdout.writeln(CliArgs.getUsage());
     return;
   }
   final cwd = Directory.current.path;
@@ -106,16 +117,13 @@ Future<void> main(List<String> argv) async {
     ),
   );
 
-  // Prepare prompt and decide if we're in list-only mode.
+  // Prepare prompt and check if we're in list-only mode.
   final prompt = await _readPrompt(args);
-  final listCommandsOnly =
-      args.listCommands && (prompt == null || prompt.trim().isEmpty);
-  final listModesOnly =
-      args.listModes && (prompt == null || prompt.trim().isEmpty);
-  if (!args.listCaps &&
-      !listCommandsOnly &&
-      !listModesOnly &&
-      (prompt == null || prompt.trim().isEmpty)) {
+  final hasListFlags = args.listCaps || args.listCommands || args.listModes;
+  final isListOnlyMode = 
+      hasListFlags && (prompt == null || prompt.trim().isEmpty);
+  
+  if (!hasListFlags && (prompt == null || prompt.trim().isEmpty)) {
     stderr.writeln('Error: empty prompt');
     stderr.writeln('Tip: run with --help for usage.');
     exitCode = 2;
@@ -137,20 +145,29 @@ Future<void> main(List<String> argv) async {
 
   await client.start();
   final init = await client.initialize();
-  // If capabilities requested, print and exit prior to creating a session.
-  if (args.listCaps) {
-    if (!args.output.isJsonLike) {
-      _printCapsText(
-        protocolVersion: init.protocolVersion,
-        authMethods: init.authMethods,
-        agentCapabilities: init.agentCapabilities,
-      );
+  
+  // Handle list flags first if present
+  String? listSessionId;
+  if (hasListFlags) {
+    listSessionId = await _handleListFlags(
+      args: args,
+      client: client,
+      init: init,
+      agentName: agentName,
+      sessionId: null,
+    );
+    
+    // If no prompt, exit after lists
+    if (isListOnlyMode) {
+      await sigintSub.cancel();
+      await client.dispose();
+      exit(0);
     }
-    await sigintSub.cancel();
-    await client.dispose();
-    exit(0);
   }
-  if (args.resumeSessionId != null) {
+  // If we already created a session for lists, reuse it for the prompt
+  if (listSessionId != null) {
+    _sessionId = listSessionId;
+  } else if (args.resumeSessionId != null) {
     // Guard session/load behind capability per spec
     final supportsLoad =
         (init.agentCapabilities ?? const {})['loadSession'] == true;
@@ -194,25 +211,8 @@ Future<void> main(List<String> argv) async {
   final updatesStream = client.sessionUpdates(_sessionId!).asBroadcastStream();
   if (args.output == OutputMode.text) {
     sessionSub = updatesStream.listen((u) {
-      if (u is AvailableCommandsUpdate) {
-        // Only print commands if --list-commands was passed
-        if (listCommandsOnly) {
-          final cmds = u.commands;
-          if (cmds.isNotEmpty) {
-            for (final c in cmds) {
-              final name = c.name;
-              final desc = c.description ?? '';
-              if (name.isEmpty) continue;
-              if (desc.isEmpty) {
-                stdout.writeln('/$name');
-              } else {
-                stdout.writeln('/$name - $desc');
-              }
-            }
-          }
-        }
-      } else if (!listCommandsOnly && !listModesOnly) {
-        if (u is PlanUpdate) {
+      // Only print updates during prompt execution, not during list-only mode
+      if (u is PlanUpdate) {
           stdout.writeln('[plan] ${jsonEncode(u.plan)}');
         } else if (u is ToolCallUpdate) {
           final t = u.toolCall;
@@ -242,84 +242,7 @@ Future<void> main(List<String> argv) async {
         } else if (u is DiffUpdate) {
           stdout.writeln('[diff] ${jsonEncode(u.diff)}');
         }
-      }
     });
-  }
-
-  // List-only: Available Commands
-  // In list-only mode, do not send a prompt. Wait briefly for an
-  // available_commands_update and then exit. If none arrives, print an empty
-  // list in text mode.
-  if (listCommandsOnly) {
-    final settle = Completer<void>();
-    late final StreamSubscription<AcpUpdate> onceSub;
-    onceSub = updatesStream.listen((u) {
-      if (!settle.isCompleted && u is AvailableCommandsUpdate) {
-        settle.complete();
-        unawaited(onceSub.cancel());
-      }
-    });
-    // Wait briefly for command discovery; if none arrives in time,
-    // treat it as an empty available commands result for tooling.
-    try {
-      await settle.future.timeout(const Duration(seconds: 2));
-    } on TimeoutException {
-      // If the agent didn't emit available_commands_update and we're in
-      // JSONL mode, synthesize an empty available_commands_update frame
-      // for tooling consistency.
-      if (args.output.isJsonLike) {
-        final synthetic = {
-          'jsonrpc': '2.0',
-          'method': 'session/update',
-          'params': {
-            'sessionId': _sessionId,
-            'update': {
-              'sessionUpdate': 'available_commands_update',
-              'availableCommands': <dynamic>[],
-            },
-          },
-        };
-        stdout.writeln(jsonEncode(synthetic));
-      }
-    }
-    await onceSub.cancel(); // Cancel the subscription
-    await sigintSub.cancel();
-    await sessionSub?.cancel();
-    await client.dispose();
-    exit(0);
-  }
-
-  // List-only: Modes
-  if (listModesOnly) {
-    final modes = client.sessionModes(_sessionId!);
-    final currentId = modes?.currentModeId ?? '';
-    final list = modes?.availableModes ?? const <({String id, String name})>[];
-    if (args.output.isJsonLike) {
-      final obj = {
-        'jsonrpc': '2.0',
-        'method': 'client/modes',
-        'params': {
-          'sessionId': _sessionId,
-          'currentModeId': currentId,
-          'availableModes': [
-            for (final m in list) {'id': m.id, 'name': m.name},
-          ],
-        },
-      };
-      stdout.writeln(jsonEncode(obj));
-    } else {
-      for (final m in list) {
-        final line = m.name.isEmpty ? m.id : '${m.id} - ${m.name}';
-        stdout.writeln(line);
-      }
-      if (list.isEmpty) {
-        stdout.writeln('(no modes)');
-      }
-    }
-    await sigintSub.cancel();
-    await sessionSub?.cancel();
-    await client.dispose();
-    exit(0);
   }
 
   // If a modeId was provided, set it now (best-effort)
@@ -390,107 +313,6 @@ Future<String?> _readPrompt(CliArgs args) async {
 String? _sessionId;
 
 // Args/OutputMode are defined in args.dart
-
-void _printUsage() {
-  // Print to stdout for --help
-  stdout.writeln('Usage: dart example/main.dart [options] [--] [prompt]');
-  stdout.writeln('');
-  stdout.writeln('Options:');
-  stdout.writeln(
-    '  -a, --agent <name>     Select agent from settings.json next to this CLI',
-  );
-  stdout.writeln('  -o, --output <mode>    Output mode:');
-  stdout.writeln('                         jsonl|json|text|simple');
-  stdout.writeln('                         (default: text)');
-  stdout.writeln(
-    '      --settings <path>  Use a specific settings.json (overrides default)',
-  );
-  stdout.writeln('      --yolo             Enable read-everywhere and');
-  stdout.writeln('                         write-enabled (writes still');
-  stdout.writeln('                         confined to CWD)');
-  stdout.writeln(
-    '      --write            Enable write capability (still confined to CWD)',
-  );
-  stdout.writeln('      --list-commands    Print available slash commands');
-  stdout.writeln('                         (no prompt sent)');
-  stdout.writeln('      --list-modes       Print available session modes');
-  stdout.writeln('                         (no prompt sent)');
-  stdout.writeln(
-    '      --list-caps        Print agent capabilities from initialize',
-  );
-  stdout.writeln('                         (no prompt sent)');
-  stdout.writeln('      --mode <id>        Set session mode after creation');
-  stdout.writeln('      --resume <id>      Resume an existing');
-  stdout.writeln('                         session (replay), then send');
-  stdout.writeln('                         the prompt');
-  stdout.writeln('      --save-session <p> Save new sessionId to file');
-  stdout.writeln('  -h, --help             Show this help and exit');
-  stdout.writeln('');
-  stdout.writeln('Prompt:');
-  stdout.writeln('  Provide as a positional argument, or pipe via stdin.');
-  stdout.writeln('  Use @-mentions to add context:');
-  stdout.writeln('    @path, @"a file.txt",');
-  stdout.writeln('    @https://example.com/file');
-  stdout.writeln('');
-  stdout.writeln('Examples:');
-  stdout.writeln('  dart example/main.dart -a my-agent "Summarize README.md"');
-  stdout.writeln(
-    '  echo "List available commands" | dart example/main.dart -o jsonl',
-  );
-}
-
-void _printCapsText({
-  required int protocolVersion,
-  List<Map<String, dynamic>>? authMethods,
-  Map<String, dynamic>? agentCapabilities,
-}) {
-  stdout.writeln('protocolVersion: $protocolVersion');
-  if (authMethods != null) {
-    stdout.writeln('authMethods:');
-    for (final m in authMethods) {
-      final id = m['id'] ?? '';
-      final name = m['name'] ?? '';
-      final desc = m['description'];
-      final descStr = (desc == null || desc.toString().isEmpty)
-          ? ''
-          : ' — $desc';
-      stdout.writeln('  - $id: $name$descStr');
-    }
-  }
-  if (agentCapabilities != null) {
-    stdout.writeln('agentCapabilities:');
-    _printMapPlain(agentCapabilities, indent: 2);
-  }
-}
-
-void _printMapPlain(Map<String, dynamic> map, {int indent = 0}) {
-  final pad = ' ' * indent;
-  final keys = map.keys.toList()..sort();
-  for (final k in keys) {
-    final v = map[k];
-    if (v is Map) {
-      stdout.writeln('$pad- $k:');
-      _printMapPlain(Map<String, dynamic>.from(v), indent: indent + 2);
-    } else if (v is List) {
-      stdout.writeln('$pad- $k:');
-      _printListPlain(v, indent: indent + 2);
-    } else {
-      stdout.writeln('$pad- $k: $v');
-    }
-  }
-}
-
-void _printListPlain(List list, {int indent = 0}) {
-  final pad = ' ' * indent;
-  for (final item in list) {
-    if (item is Map) {
-      stdout.writeln('$pad-');
-      _printMapPlain(Map<String, dynamic>.from(item), indent: indent + 2);
-    } else {
-      stdout.writeln('$pad- $item');
-    }
-  }
-}
 
 String _truncate(String s, int max) {
   if (s.length <= max) return s;
@@ -587,4 +409,250 @@ String _displayNameFor(Uri uri) {
     return segs.isNotEmpty ? segs.last : uri.host;
   }
   return p.basename(uri.path);
+}
+
+Future<String?> _handleListFlags({
+  required CliArgs args,
+  required AcpClient client,
+  required InitializeResult init,
+  required String agentName,
+  String? sessionId,
+}) async {
+  final needsSession = args.listModes || args.listCommands;
+  final outputSections = <String>[];
+  
+  // Capabilities (no session needed)
+  if (args.listCaps) {
+    if (args.output.isJsonLike) {
+      final capsJson = {
+        'jsonrpc': '2.0',
+        'method': 'client/capabilities',
+        'params': {
+          'protocolVersion': init.protocolVersion,
+          'authMethods': init.authMethods ?? [],
+          'agentCapabilities': init.agentCapabilities ?? {},
+        },
+      };
+      stdout.writeln(jsonEncode(capsJson));
+    } else {
+      outputSections.add(_formatCapabilitiesMarkdown(
+        protocolVersion: init.protocolVersion,
+        agentName: agentName,
+        authMethods: init.authMethods,
+        agentCapabilities: init.agentCapabilities,
+      ));
+    }
+  }
+  
+  // Create session if needed for modes/commands
+  if (needsSession && sessionId == null) {
+    sessionId = await client.newSession();
+    _sessionId = sessionId;
+  }
+  
+  // Modes (needs session)
+  if (args.listModes && sessionId != null) {
+    final modes = client.sessionModes(sessionId);
+    final currentId = modes?.currentModeId ?? '';
+    final list = modes?.availableModes ?? const <({String id, String name})>[];
+    
+    if (args.output.isJsonLike) {
+      final modesJson = {
+        'jsonrpc': '2.0',
+        'method': 'client/modes',
+        'params': {
+          'sessionId': sessionId,
+          'currentModeId': currentId,
+          'availableModes': [
+            for (final m in list) {'id': m.id, 'name': m.name},
+          ],
+        },
+      };
+      stdout.writeln(jsonEncode(modesJson));
+    } else {
+      outputSections.add(_formatModesMarkdown(list, agentName));
+    }
+  }
+  
+  // Commands (needs session and waiting for update)
+  if (args.listCommands && sessionId != null) {
+    final commands = await _waitForCommands(client, sessionId, args);
+    
+    if (args.output.isJsonLike) {
+      // For JSONL, the session update already emitted or we synthesize one
+      if (commands.isEmpty) {
+        final synthetic = {
+          'jsonrpc': '2.0',
+          'method': 'session/update',
+          'params': {
+            'sessionId': sessionId,
+            'update': {
+              'sessionUpdate': 'available_commands_update',
+              'availableCommands': <dynamic>[],
+            },
+          },
+        };
+        stdout.writeln(jsonEncode(synthetic));
+      }
+    } else {
+      outputSections.add(_formatCommandsMarkdown(commands, agentName));
+    }
+  }
+  
+  // Print all sections for text/simple mode with blank line between
+  if (!args.output.isJsonLike && outputSections.isNotEmpty) {
+    for (var i = 0; i < outputSections.length; i++) {
+      final section = outputSections[i];
+      stdout.write(section);
+      // Ensure section ends with newline
+      if (!section.endsWith('\n')) {
+        stdout.writeln();
+      }
+      // Add blank line after each section (including the last)
+      stdout.writeln();
+    }
+  }
+  
+  // Return sessionId for reuse if created
+  return sessionId;
+}
+
+Future<List<AvailableCommand>> _waitForCommands(
+  AcpClient client,
+  String sessionId,
+  CliArgs args,
+) async {
+  final completer = Completer<List<AvailableCommand>>();
+  late StreamSubscription<AcpUpdate> sub;
+  
+  sub = client.sessionUpdates(sessionId).listen((update) {
+    if (update is AvailableCommandsUpdate) {
+      if (!completer.isCompleted) {
+        completer.complete(update.commands);
+        unawaited(sub.cancel());
+      }
+    }
+  });
+  
+  try {
+    return await completer.future.timeout(const Duration(seconds: 2));
+  } on TimeoutException {
+    await sub.cancel();
+    return [];
+  }
+}
+
+String _formatCapabilitiesMarkdown({
+  required int protocolVersion,
+  required String agentName,
+  List<Map<String, dynamic>>? authMethods,
+  Map<String, dynamic>? agentCapabilities,
+}) {
+  final buffer = StringBuffer();
+  buffer.writeln('# Capabilities ($agentName)');
+  buffer.writeln('- Protocol Version: $protocolVersion');
+  
+  if (authMethods != null && authMethods.isNotEmpty) {
+    buffer.writeln('- Auth Methods:');
+    for (final m in authMethods) {
+      final id = m['id'] ?? '';
+      final name = m['name'] ?? '';
+      final desc = m['description'];
+      final descStr = 
+          (desc == null || desc.toString().isEmpty) ? '' : ': $desc';
+      buffer.writeln('  - $id - $name$descStr');
+    }
+  }
+  
+  if (agentCapabilities != null && agentCapabilities.isNotEmpty) {
+    buffer.writeln('- Agent Capabilities:');
+    _formatMapMarkdown(buffer, agentCapabilities, indent: 2);
+  }
+  
+  return buffer.toString();
+}
+
+String _formatModesMarkdown(
+  List<({String id, String name})> modes,
+  String agentName,
+) {
+  final buffer = StringBuffer();
+  buffer.writeln('# Modes ($agentName)');
+  
+  if (modes.isEmpty) {
+    buffer.writeln('(no modes)');
+  } else {
+    for (final m in modes) {
+      final line = m.name.isEmpty ? '- ${m.id}' : '- ${m.id} - ${m.name}';
+      buffer.writeln(line);
+    }
+  }
+  
+  return buffer.toString();
+}
+
+String _formatCommandsMarkdown(
+  List<AvailableCommand> commands,
+  String agentName,
+) {
+  final buffer = StringBuffer();
+  buffer.writeln('# Commands ($agentName)');
+  
+  if (commands.isEmpty) {
+    buffer.writeln('(no commands)');
+  } else {
+    for (final c in commands) {
+      final name = c.name;
+      final desc = c.description ?? '';
+      if (name.isEmpty) continue;
+      if (desc.isEmpty) {
+        buffer.writeln('- /$name');
+      } else {
+        buffer.writeln('- /$name - $desc');
+      }
+    }
+  }
+  
+  return buffer.toString();
+}
+
+void _formatMapMarkdown(
+  StringBuffer buffer,
+  Map<String, dynamic> map, {
+  int indent = 0,
+}) {
+  final pad = ' ' * indent;
+  final keys = map.keys.toList()..sort();
+  for (final k in keys) {
+    final v = map[k];
+    if (v is Map) {
+      buffer.writeln('$pad- $k:');
+      _formatMapMarkdown(
+        buffer,
+        Map<String, dynamic>.from(v),
+        indent: indent + 2,
+      );
+    } else if (v is List) {
+      buffer.writeln('$pad- $k:');
+      _formatListMarkdown(buffer, v, indent: indent + 2);
+    } else {
+      buffer.writeln('$pad- $k: $v');
+    }
+  }
+}
+
+void _formatListMarkdown(StringBuffer buffer, List list, {int indent = 0}) {
+  final pad = ' ' * indent;
+  for (final item in list) {
+    if (item is Map) {
+      buffer.writeln('$pad-');
+      _formatMapMarkdown(
+        buffer,
+        Map<String, dynamic>.from(item),
+        indent: indent + 2,
+      );
+    } else {
+      buffer.writeln('$pad- $item');
+    }
+  }
 }

@@ -27,13 +27,19 @@ workspace jail, permissions, and optional terminal provider.
   terminal lifecycle).
 - Session manager: `initialize`, `newSession`, `prompt` streaming (`AcpUpdate`
   types), `cancel`.
+- Minimum protocol version enforcement: Client verifies agent's protocol version
+  meets minimum requirements (currently v1).
 - Providers: FS jail enforcement, default permission policy, default terminal
   process provider.
+- Permission handling: Respects configured permissions from AcpConfig and CLI
+  arguments, properly denying operations when permissions are not granted.
 - Terminal events stream for UIs: created/output/exited/released.
  - When a `TerminalProvider` is configured, the client also advertises a
    non‑standard `clientCapabilities.terminal: true` to enable terminal tools in
    adapters that honor it (e.g., Claude Code). Other agents ignore unknown
    capability keys.
+- Richer tool metadata: Tool calls display title, locations, and raw
+  input/output snippets in text mode for better debugging and transparency.
 
 ### Quick Start (Example CLI)
 ```bash
@@ -67,6 +73,11 @@ Options:
       --resume <id>      Resume an existing session (replay), then send the prompt
       --save-session <p> Save new sessionId to file
   -h, --help             Show this help and exit
+
+Note: The --list-xxx flags can be combined to show multiple types of information.
+They output in order: capabilities → modes → commands, with a blank line between
+each section. When combined with a prompt, the lists are shown first (with a blank
+line after), then the prompt is processed using the same session.
 
 Prompt:
   Provide as a positional argument, or pipe via stdin.
@@ -122,6 +133,9 @@ Examples:
   /tmp/sid)" "Continue"`
 - Resume with stdin: `echo "Continue" | dart example/main.dart -a claude-code
   --resume "$(cat /tmp/sid)"`
+- Note: Session resumption (`--resume`) is only available if the agent advertises
+  `loadSession` capability. The CLI will exit with an error if you attempt to
+  resume with an agent that doesn't support it.
 
 ### Agent Selection
 - `-a, --agent <name>` selects an entry from `agent_servers` in
@@ -266,9 +280,27 @@ Use `--list-commands` to see what commands the agent supports:
 dart example/main.dart -a claude-code --list-commands
 
 # Example output:
-# /init - Initialize a new CLAUDE.md file with codebase documentation
-# /review - Review a pull request
+# # Commands (claude-code)
+# - /init - Initialize a new CLAUDE.md file with codebase documentation
+# - /review - Review a pull request
 # ...
+
+# Combine multiple list flags to see all information at once
+dart example/main.dart -a claude-code --list-caps --list-modes --list-commands
+
+# Output includes all three sections with agent name in headers:
+# # Capabilities (claude-code)
+# - Protocol Version: 1
+# ...
+# # Modes (claude-code)
+# - code - Coding
+# ...
+# # Commands (claude-code)
+# - /init - Initialize a new CLAUDE.md file
+# ...
+
+# List information and then process a prompt (reuses session)
+dart example/main.dart -a claude-code --list-modes "What files are in this directory?"
 ```
 
 Note: Gemini currently doesn't expose slash commands, so the list will be empty.
@@ -276,15 +308,17 @@ Note: Gemini currently doesn't expose slash commands, so the list will be empty.
 ### Session Modes (Extension)
 
 Some agents expose session modes (e.g., code/edit/plan). You can list and set
-modes when available.
+modes when available. The client properly routes `current_mode_update` events
+from agents as typed `ModeUpdate` objects in the update stream.
 
 ```bash
 # List modes without sending a prompt
 dart example/main.dart -a claude-code --list-modes
 
 # Example output (text mode):
-# code - Coding
-# edit - Editing
+# # Modes (claude-code)
+# - code - Coding
+# - edit - Editing
 
 # JSONL: emits a single metadata record with availableModes
 dart example/main.dart -a claude-code --list-modes -o jsonl | jq 'select(.method=="client/modes")'
@@ -302,13 +336,14 @@ Inspect agent capabilities negotiated during `initialize`:
 dart example/main.dart -a claude-code --list-caps
 
 # Example output (text mode)
-protocolVersion: 1
-authMethods:
-  - claude-login: Log in with Claude Code
-agentCapabilities:
-  - promptCapabilities:
-    - embeddedContext: true
-    - image: true
+# # Capabilities (claude-code)
+# - Protocol Version: 1
+# - Auth Methods:
+#   - claude-login - Log in with Claude Code
+# - Agent Capabilities:
+#   - promptCapabilities:
+#     - embeddedContext: true
+#     - image: true
 
 # JSONL frames (inspect the initialize result)
 dart example/main.dart -a claude-code -o jsonl --list-caps | jq 'select(.result!=null)'
