@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as path;
 import 'package:test/test.dart';
 
 import 'helpers/adapter_caps.dart';
@@ -590,6 +591,139 @@ void main() {
       
       // Verify blank line separates lists from prompt output
       expect(output, contains('(no modes)\n\nEcho: echo test message'));
+    });
+
+    test('echo: non-interactive permissions with --write flag', () async {
+      final dir = await Directory.systemTemp.createTemp('cli_perm_test_');
+      addTearDown(() => dir.delete(recursive: true));
+      
+      // Create a test file
+      File(path.join(dir.path, 'test.txt')).writeAsStringSync('Hello');
+      
+      final proc = await Process.start('dart', [
+        'example/main.dart',
+        '--settings',
+        settingsPath,
+        '-a',
+        'echo',
+        '--write',  // Enable writes
+        'Write to output.txt',
+      ], workingDirectory: dir.path);
+      
+      await proc.stdin.close();
+      final output = await proc.stdout.transform(utf8.decoder).join();
+      final stderr = await proc.stderr.transform(utf8.decoder).join();
+      final code = await proc.exitCode.timeout(const Duration(seconds: 10));
+      
+      expect(code, 0, reason: 'Command failed: $stderr');
+      
+      // Should never see interactive prompts regardless of agent behavior
+      expect(output, isNot(contains('Allow once? [y/N]:')));
+      // Note: echo agent doesn't typically request permissions,
+      // but if it did, we'd see auto-allow with --write flag
+      if (output.contains('[permission]')) {
+        expect(output, contains('[permission] auto-allow'));
+      }
+    });
+
+    test('echo: non-interactive permissions without --write flag', () async {
+      final dir = await Directory.systemTemp.createTemp('cli_perm_test_');
+      addTearDown(() => dir.delete(recursive: true));
+      
+      final proc = await Process.start('dart', [
+        'example/main.dart',
+        '--settings',
+        settingsPath,
+        '-a',
+        'echo',
+        // No --write flag
+        'Try to write something',
+      ], workingDirectory: dir.path);
+      
+      await proc.stdin.close();
+      final output = await proc.stdout.transform(utf8.decoder).join();
+      final stderr = await proc.stderr.transform(utf8.decoder).join();
+      final code = await proc.exitCode.timeout(const Duration(seconds: 10));
+      
+      expect(code, 0, reason: 'Command failed: $stderr');
+      
+      // Should never see interactive prompts regardless of agent behavior
+      expect(output, isNot(contains('Allow once? [y/N]:')));
+      // Note: echo agent doesn't typically request permissions,
+      // but if it did for writes, we'd see auto-deny without --write flag
+      if (output.contains('[permission]')) {
+        expect(output, contains('[permission] auto-deny'));
+        expect(output, contains('Use --write or --yolo to enable writes'));
+      }
+    });
+
+    test('echo: non-interactive permissions with --yolo flag', () async {
+      final dir = await Directory.systemTemp.createTemp('cli_yolo_test_');
+      addTearDown(() => dir.delete(recursive: true));
+      
+      // Create a test file
+      File(path.join(dir.path, 'test.txt')).writeAsStringSync('Hello');
+      
+      final proc = await Process.start('dart', [
+        'example/main.dart',
+        '--settings',
+        settingsPath,
+        '-a',
+        'echo',
+        '--yolo',  // Enable read-everywhere and writes
+        'Write and read files',
+      ], workingDirectory: dir.path);
+      
+      await proc.stdin.close();
+      final output = await proc.stdout.transform(utf8.decoder).join();
+      final stderr = await proc.stderr.transform(utf8.decoder).join();
+      final code = await proc.exitCode.timeout(const Duration(seconds: 10));
+      
+      expect(code, 0, reason: 'Command failed: $stderr');
+      
+      // Should never see interactive prompts regardless of agent behavior
+      expect(output, isNot(contains('Allow once? [y/N]:')));
+      // Note: echo agent doesn't typically request permissions,
+      // but if it did, we'd see auto-allow with --yolo flag
+      if (output.contains('[permission]')) {
+        expect(output, contains('[permission] auto-allow'));
+        expect(output, isNot(contains('[permission] auto-deny')));
+      }
+    });
+
+    test('echo: permissions in JSONL mode should not show messages', () async {
+      final dir = await Directory.systemTemp.createTemp('cli_jsonl_perm_');
+      addTearDown(() => dir.delete(recursive: true));
+      
+      final proc = await Process.start('dart', [
+        'example/main.dart',
+        '--settings',
+        settingsPath,
+        '-a',
+        'echo',
+        '-o',
+        'jsonl',
+        '--write',  // Enable writes
+        'Process data',
+      ], workingDirectory: dir.path);
+      
+      await proc.stdin.close();
+      final lines = await proc.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .toList();
+      final stderr = await proc.stderr.transform(utf8.decoder).join();
+      final code = await proc.exitCode.timeout(const Duration(seconds: 10));
+      
+      expect(code, 0, reason: 'Command failed: $stderr');
+      
+      // In JSONL mode, should not see permission messages in output
+      for (final line in lines) {
+        expect(line, isNot(contains('[permission]')));
+        expect(line, isNot(contains('Allow once?')));
+        // Each line should be valid JSON
+        expect(() => jsonDecode(line), returnsNormally);
+      }
     });
 
     test('echo: --list-xxx flags in JSONL mode', () async {

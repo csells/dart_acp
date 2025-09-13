@@ -83,28 +83,32 @@ Future<void> main(List<String> argv) async {
       allowReadOutsideWorkspace: args.yolo,
       permissionProvider: DefaultPermissionProvider(
         onRequest: (opts) async {
-          // Simple CLI prompt. Auto-allow in non-interactive environments.
-          if (!stdin.hasTerminal) {
-            // In JSONL mode, suppress human-readable prints entirely.
-            if (!args.output.isJsonLike) {
-              stdout.writeln('[permission] auto-allow ${opts.toolName}');
+          // Non-interactive: decide based on CLI flags
+          // --yolo or --write enables write operations
+          final allowWrites = args.write || args.yolo;
+          
+          // Check if this is a write operation
+          final isWriteOp = 
+              opts.toolKind?.toLowerCase().contains('write') ?? false;
+          
+          // Auto-decide based on flags
+          final decision = (!isWriteOp || allowWrites) 
+              ? PermissionOutcome.allow 
+              : PermissionOutcome.deny;
+          
+          // Log the decision in text mode (not in JSONL mode)
+          if (!args.output.isJsonLike) {
+            final action = 
+                decision == PermissionOutcome.allow ? 'allow' : 'deny';
+            stdout.writeln('[permission] auto-$action ${opts.toolName}'
+                '${opts.toolKind != null ? ' (${opts.toolKind})' : ''}');
+            if (decision == PermissionOutcome.deny && isWriteOp) {
+              stdout.writeln(
+                  '[permission] Use --write or --yolo to enable writes');
             }
-            return PermissionOutcome.allow;
           }
-          stdout.writeln(
-            'Permission requested: ${opts.toolName}'
-            '${opts.toolKind != null ? ' (${opts.toolKind})' : ''}',
-          );
-          if (opts.rationale.isNotEmpty) {
-            stdout.writeln('Rationale: ${opts.rationale}');
-          }
-          stdout.write('Allow once? [y/N]: ');
-          final input = stdin.readLineSync();
-          if (input != null &&
-              (input.toLowerCase() == 'y' || input.toLowerCase() == 'yes')) {
-            return PermissionOutcome.allow;
-          }
-          return PermissionOutcome.deny;
+          
+          return decision;
         },
       ),
       onProtocolOut: args.output.isJsonLike

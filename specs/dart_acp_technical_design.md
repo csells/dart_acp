@@ -260,11 +260,14 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
   - `--agent <name>` (`-a <name>`): selects an agent by key from `agent_servers`.  
   - `--output <mode>` (`-o`): `jsonl|json|text|simple` (json is an alias for jsonl).  
   - `--list-commands`: print available slash commands (AvailableCommand[]) without sending a prompt; waits for `available_commands_update`.  
+  - `--list-modes`: print available session modes without sending a prompt.
   - `--list-caps`: print initialize results (protocolVersion, authMethods, agentCapabilities) without sending a prompt. Note: plan/diff/terminal are runtime behaviors and will not appear here. In JSONL mode, rely on mirrored `initialize` frames; in text mode, a concise summary is printed.  
   - `--yolo`: enables read‑everywhere and write capability (writes still confined to CWD).  
   - `--write`: enables write capability (still confined to CWD).  
   - `--resume <id>` / `--save-session <path>`: session resume helpers.  
   - `--help` (`-h`): prints usage.
+  
+  Note: The `--list-xxx` flags can be combined (stacked) to show multiple types of information in a single invocation. Output order follows: capabilities → modes → commands, with blank lines between sections in text/simple mode. When combined with a prompt, lists are shown first, then the prompt is processed using the same session for efficiency.
 
 - **Selection rules**:  
   1) If `--agent` is provided, use that agent key.  
@@ -404,12 +407,18 @@ dart example/main.dart [options] [--] [prompt]
 
 - `-a, --agent <name>`: Selects an agent by key from `settings.json` (script directory) → `agent_servers`. If absent, defaults to the first listed agent. Missing file or unknown agent is an error and exits non‑zero.
 - `-o, --output <mode>`: One of `jsonl|json|text|simple` (default: `text`). `json` is an alias for `jsonl`. In `jsonl`/`json` modes, all protocol frames are mirrored to stdout and no human text is printed.
-- `--list-caps`: Prints capabilities reported by the agent during `initialize` (protocolVersion, authMethods, agentCapabilities) and exits without creating a session. In `jsonl` mode, no extra lines are printed beyond the protocol frames.
+- `--list-caps`: Prints capabilities reported by the agent during `initialize` (protocolVersion, authMethods, agentCapabilities). In `jsonl` mode, no extra lines are printed beyond the protocol frames. In text/simple mode, formatted with agent name in header.
+- `--list-modes`: Prints available session modes. Creates a session if needed.
+- `--list-commands`: Prints available slash commands after waiting for `available_commands_update`. Creates a session if needed.
 - `--yolo`: Enables read‑everywhere and write capability; writes remain confined to the CWD (outside‑workspace writes are denied with a descriptive error).
 - `--write`: Enables `fs.writeTextFile` capability (still confined to the CWD).
 - `--resume <sessionId>`: Calls `session/load` then sends the prompt.
 - `--save-session <path>`: Saves a newly created `sessionId` to the specified file.
 - `-h, --help`: Prints usage and exits.
+
+Note: Multiple `--list-xxx` flags can be combined in a single invocation. They output in order (capabilities → modes → commands) with blank lines between sections. If a prompt is also provided, lists are shown first, then the prompt is processed using the same session.
+
+**Non-interactive behavior**: The CLI is fully non-interactive. Permission requests from agents are automatically handled based on CLI flags: write operations are allowed with `--write` or `--yolo`, denied otherwise. All other operations are automatically allowed. No user prompts are displayed.
 
 ### 17.3 Configuration (`settings.json` next to CLI)
 
@@ -466,11 +475,11 @@ Example:
 
 ### 17.7 Triggering Behaviors (Prompts)
 
-The CLI is prompt‑first: it doesn’t synthesize protocol frames beyond `--list-commands`. Use prompts that elicit the desired ACP updates:
+The CLI is prompt‑first: it doesn't synthesize protocol frames beyond `--list-xxx` flags. Use prompts that elicit the desired ACP updates:
 
 - Commands:
-  - `--list-commands` with no prompt does not send a prompt; it waits for and surfaces `available_commands_update`.
-  - Or: “List your available commands and briefly describe each one. Do not execute anything until further instruction.”
+  - `--list-commands` (optionally combined with other `--list-xxx` flags) does not send a prompt when used alone; it waits for and surfaces `available_commands_update`.
+  - Or: "List your available commands and briefly describe each one. Do not execute anything until further instruction."
   - Expect `session/update` with `sessionUpdate=available_commands_update`.
 
 - Plans:

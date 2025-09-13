@@ -79,6 +79,10 @@ They output in order: capabilities → modes → commands, with a blank line bet
 each section. When combined with a prompt, the lists are shown first (with a blank
 line after), then the prompt is processed using the same session.
 
+The CLI is fully non-interactive. Permission requests from agents are automatically
+handled based on the flags: write operations are allowed with --write or --yolo,
+denied otherwise. All other operations are automatically allowed.
+
 Prompt:
   Provide as a positional argument, or pipe via stdin.
   Use @-mentions to add context: @path, @"a file.txt", @https://example.com/file
