@@ -15,10 +15,10 @@ class AgentCaps {
 final Map<String, AgentCaps> _capsCache = {};
 final Map<String, bool> _terminalRuntimeCache = {};
 
-AgentCaps capsFor(String agent) {
+Future<AgentCaps> capsFor(String agent) async {
   if (_capsCache.containsKey(agent)) return _capsCache[agent]!;
   final settingsPath = File('test/test_settings.json').absolute.path;
-  final proc = Process.runSync(
+  final proc = await Process.run(
     'dart',
     [
       'example/main.dart',
@@ -72,12 +72,12 @@ bool _hasKeyLike(dynamic node, String pattern) {
 }
 
 /// Returns null if supported; otherwise a skip reason. All patterns must match.
-String? skipIfMissingAll(
+Future<String?> skipIfMissingAll(
   String agent,
   List<String> capKeyPatterns,
   String name,
-) {
-  final caps = capsFor(agent);
+) async {
+  final caps = await capsFor(agent);
   final ac = caps.agentCapabilities;
   // If agentCapabilities map is empty, be conservative and skip.
   if (ac.isEmpty) {
@@ -92,8 +92,12 @@ String? skipIfMissingAll(
 }
 
 /// Returns null if any pattern matches; otherwise a skip reason.
-String? skipUnlessAny(String agent, List<String> patterns, String name) {
-  final caps = capsFor(agent);
+Future<String?> skipUnlessAny(
+  String agent,
+  List<String> patterns,
+  String name,
+) async {
+  final caps = await capsFor(agent);
   final ac = caps.agentCapabilities;
   if (ac.isEmpty) {
     return "Adapter '$agent' does not advertise capabilities; skipping $name";
@@ -108,14 +112,14 @@ String? skipUnlessAny(String agent, List<String> patterns, String name) {
 /// Probe terminal support at runtime by asking the CLI to run a simple command
 /// and checking for a terminal content block in JSONL frames. Returns null if
 /// terminal appears supported; otherwise a descriptive skip reason.
-String? skipIfNoRuntimeTerminal(String agent) {
+Future<String?> skipIfNoRuntimeTerminal(String agent) async {
   if (_terminalRuntimeCache.containsKey(agent)) {
     return _terminalRuntimeCache[agent]!
         ? null
         : "Adapter '$agent' lacks runtime terminal support";
   }
   final settingsPath = File('test/test_settings.json').absolute.path;
-  final proc = Process.runSync(
+  final proc = await Process.run(
     'dart',
     [
       'example/main.dart',

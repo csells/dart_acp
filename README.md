@@ -22,24 +22,20 @@ workspace jail, permissions, and optional terminal provider.
   system, terminal, and schema.
 
 ### Features
-- Stdio transport (JSON‑RPC over stdin/stdout between client and agent).
-- JSON‑RPC peer with client callbacks (fs.read/write, permission prompts,
-  terminal lifecycle).
-- Session manager: `initialize`, `newSession`, `prompt` streaming (`AcpUpdate`
-  types), `cancel`.
-- Minimum protocol version enforcement: Client verifies agent's protocol version
-  meets minimum requirements (currently v1).
-- Providers: FS jail enforcement, default permission policy, default terminal
-  process provider.
-- Permission handling: Respects configured permissions from AcpConfig and CLI
-  arguments, properly denying operations when permissions are not granted.
-- Terminal events stream for UIs: created/output/exited/released.
- - When a `TerminalProvider` is configured, the client also advertises a
-   non‑standard `clientCapabilities.terminal: true` to enable terminal tools in
-   adapters that honor it (e.g., Claude Code). Other agents ignore unknown
-   capability keys.
-- Richer tool metadata: Tool calls display title, locations, and raw
-  input/output snippets in text mode for better debugging and transparency.
+- **Latest ACP Protocol Support**: Full compatibility with the latest Agent Client Protocol specification from agentclientprotocol.com.
+- **Stdio transport**: JSON‑RPC over stdin/stdout between client and agent.
+- **JSON‑RPC peer**: Bidirectional communication with client callbacks (fs.read/write, permission prompts, terminal lifecycle).
+- **Enhanced Session Management**: `initialize`, `newSession`/`loadSession`, `prompt` streaming with typed `AcpUpdate` events, `cancel`, and session mode support.
+- **Protocol Version Enforcement**: Client verifies agent's protocol version meets minimum requirements (currently v1).
+- **Comprehensive Providers**: FS jail enforcement, permission policies, and terminal process management.
+- **Plan Handling with Priorities**: Support for execution plans with high/medium/low priority levels and proper status tracking (pending/in_progress/completed).
+- **Enhanced Tool Call Support**: Full tool kind categorization (read/edit/delete/move/search/execute/think/fetch/other), location tracking, and improved status handling (pending/in_progress/completed/failed/cancelled).
+- **Slash Command Support**: Available commands with input hints for enhanced user experience.
+- **Session Modes**: Agent operating mode discovery, listing, and switching capabilities.
+- **Extensibility**: Meta field support foundation for custom protocol extensions.
+- **Permission Handling**: Respects configured permissions from AcpConfig and CLI arguments, properly denying operations when permissions are not granted.
+- **Terminal Integration**: Terminal events stream for UIs (created/output/exited/released) with non‑standard `clientCapabilities.terminal: true` advertisement.
+- **Rich Tool Metadata**: Tool calls display titles, file locations, and raw input/output snippets for better debugging and transparency.
 
 ### Quick Start (Example CLI)
 ```bash

@@ -300,7 +300,7 @@ void main() {
       final toolCallsById = <String, ToolCall>{};
       var emptyIdCounter = 0;
       for (final update in updates.whereType<ToolCallUpdate>()) {
-        var id = update.toolCall.id;
+        var id = update.toolCall.toolCallId;
         if (id.isEmpty) {
           id = '__empty_${emptyIdCounter++}';
         }
@@ -464,9 +464,8 @@ void main() {
           final finalToolCalls = getFinalToolCalls(updates);
           final writeCalls = finalToolCalls.values.where(
             (tc) =>
-                tc.kind == 'write' ||
-                tc.kind == 'edit' ||
-                (tc.name?.contains('write') ?? false),
+                tc.kind == ToolKind.edit ||
+                (tc.title?.contains('write') ?? false),
           );
           expect(writeCalls.isNotEmpty, isTrue);
         },
@@ -683,8 +682,8 @@ void main() {
       
       // Check for richer metadata
       final readCall = toolCalls.firstWhere(
-        (tc) => tc.toolCall.kind == 'read' || 
-                (tc.toolCall.name?.contains('read') ?? false),
+        (tc) => tc.toolCall.kind == ToolKind.read || 
+                (tc.toolCall.title?.contains('read') ?? false),
         orElse: () => toolCalls.first,
       );
       
@@ -794,8 +793,8 @@ void main() {
             final finalToolCalls = getFinalToolCalls(updates);
             final execCalls = finalToolCalls.values.where(
               (tc) =>
-                  tc.kind == 'execute' ||
-                  (tc.name?.contains('execute') ?? false),
+                  tc.kind == ToolKind.execute ||
+                  (tc.title?.contains('execute') ?? false),
             );
             expect(events.isNotEmpty || execCalls.isNotEmpty, isTrue);
           },

@@ -85,20 +85,20 @@ void main() {
     test('PlanUpdate contains plan data', () {
       const update = PlanUpdate(
         Plan(
-          blocks: [
-            PlanBlock(id: '1', content: 'Step 1'),
-            PlanBlock(id: '2', content: 'Step 2'),
+          entries: [
+            PlanEntry(content: 'Step 1', priority: PlanEntryPriority.high, status: PlanEntryStatus.pending),
+            PlanEntry(content: 'Step 2', priority: PlanEntryPriority.medium, status: PlanEntryStatus.inProgress),
           ],
         ),
       );
-      expect(update.plan.blocks.length, 2);
+      expect(update.plan.entries.length, 2);
     });
 
     test('ToolCallUpdate contains tool data', () {
       const update = ToolCallUpdate(
-        ToolCall(id: 'tool-123', status: ToolCallStatus.progress),
+        ToolCall(toolCallId: 'tool-123', status: ToolCallStatus.inProgress),
       );
-      expect(update.toolCall.id, 'tool-123');
+      expect(update.toolCall.toolCallId, 'tool-123');
     });
 
     test('DiffUpdate contains diff data', () {

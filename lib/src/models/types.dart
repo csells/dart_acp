@@ -3,8 +3,11 @@ enum StopReason {
   /// The model finished the turn without requesting more tools.
   endTurn,
 
-  /// The agent hit token or request limits for the turn.
+  /// The agent hit token limits for the turn.
   maxTokens,
+  
+  /// The maximum number of model requests in a single turn is exceeded.
+  maxTurnRequests,
 
   /// The client cancelled the turn (`session/cancel`).
   cancelled,
@@ -22,8 +25,9 @@ StopReason stopReasonFromWire(String s) {
     case 'end_turn':
       return StopReason.endTurn;
     case 'max_tokens':
-    case 'max_turn_requests':
       return StopReason.maxTokens;
+    case 'max_turn_requests':
+      return StopReason.maxTurnRequests;
     case 'cancelled':
       return StopReason.cancelled;
     case 'refusal':
@@ -31,4 +35,13 @@ StopReason stopReasonFromWire(String s) {
     default:
       return StopReason.other;
   }
+}
+
+/// Base class for ACP types that support meta fields for extensibility.
+abstract class AcpType {
+  /// Creates an ACP type.
+  const AcpType({this.meta});
+  
+  /// Meta fields for custom information and extensions.
+  final Map<String, dynamic>? meta;
 }

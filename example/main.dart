@@ -220,20 +220,20 @@ Future<void> main(List<String> argv) async {
           stdout.writeln('[plan] ${jsonEncode(u.plan)}');
         } else if (u is ToolCallUpdate) {
           final t = u.toolCall;
-          final title = (t.title ?? t.name ?? '').trim();
-          final kind = (t.kind ?? '').trim();
+          final title = (t.title ?? '').trim();
+          final kind = (t.kind?.toWire() ?? '').trim();
           var locText = '';
           final locs = t.locations ?? const [];
           if (locs.isNotEmpty) {
             final loc = locs.first;
-            final path = (loc['path'] ?? loc['uri'] ?? '').toString();
+            final path = loc.path;
             if (path.isNotEmpty) locText = ' @ $path';
           }
           final header = [
             if (kind.isNotEmpty) kind,
             if (title.isNotEmpty) title,
           ].join(' ');
-          stdout.writeln('[tool] ${header.isEmpty ? t.id : header}$locText');
+          stdout.writeln('[tool] ${header.isEmpty ? t.toolCallId : header}$locText');
           // Show raw input/output snippets when present
           if (t.rawInput != null) {
             final snip = _truncate(_stringify(t.rawInput), 240);

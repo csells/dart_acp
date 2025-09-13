@@ -102,6 +102,7 @@ Unit tests run quickly, cover logic in isolation, and may use mocks.
   - Runs the CLI with `--list-caps` to fetch adapter capabilities.
   - Caches results in memory to avoid repeated process launches within one test run.
   - Provides `skipIfMissingAll` and `skipUnlessAny` helpers.
+  - **Process Management**: Uses async `Process.run` with lazy initialization pattern to avoid blocking the Dart isolate during test discovery. Processes are run only when first needed and results are cached for the duration of the test run.
 
 - `test/agents/echo_agent.dart`
   - A small echo agent for deterministic behavior in E2E.
@@ -122,6 +123,10 @@ Unit tests run quickly, cover logic in isolation, and may use mocks.
   - For JSONL parsing tests, `jsonDecode` should throw on invalid input; do not skip malformed lines.
 - Cleanup:
   - Use `addTearDown` to remove temp resources and check `exists()` before deletion.
+- Process Management:
+  - Never use `Process.runSync` in test helpers as it blocks the Dart isolate during test discovery.
+  - Use async `Process.run` with lazy initialization and caching patterns to avoid repeated launches.
+  - Helper functions that need process data should be async and cache results after first execution.
 - Capability gating:
   - Only gate tests for features negotiated at initialize (e.g., `session/load`).
   - Do not gate runtime features (plans, diffs, available commands, terminal content) on initialize data; assert on observed behavior.

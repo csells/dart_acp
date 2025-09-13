@@ -82,10 +82,11 @@ flowchart LR
 
 ## 4. Protocol Mapping (ACP → Library Responsibilities)
 
-- **initialize**: Negotiate protocol version and capability exchange. Library exposes a simple “client capabilities” struct (e.g., `fs.readTextFile`, `fs.writeTextFile`) and records agent capabilities/methods.  
-- **session/new** & **session/load**: Start a new session (specify working directory / workspace root) or load an existing one if supported by the agent.  
-- **session/prompt**: Send content blocks; stream `session/update` notifications (plan entries, assistant message deltas, tool calls with status, diffs, available command updates, etc.); complete with a **StopReason**.  
+- **initialize**: Negotiate protocol version and capability exchange. Library exposes a simple "client capabilities" struct (e.g., `fs.readTextFile`, `fs.writeTextFile`) and records agent capabilities/methods.  
+- **session/new** & **session/load**: Start a new session (specify working directory / workspace root) or load an existing one if supported by the agent. Session responses may include mode information.
+- **session/prompt**: Send content blocks; stream `session/update` notifications (plan entries with priorities, assistant message deltas, tool calls with enhanced status, diffs, available command updates, mode changes, etc.); complete with a **StopReason**.  
 - **session/cancel**: Notify the agent; ensure pending permission prompts are resolved as cancelled; expect a final prompt result with `stopReason=cancelled`.  
+- **session/set_mode**: Switch between agent operating modes when supported (extension).
 - **Agent→Client**: Handle `read_text_file`, `write_text_file`, `session/request_permission`, and terminal lifecycle (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`) via the configured providers.
 
 Notes
@@ -199,7 +200,7 @@ Constraints
 ## 7. Public Surfaces (Described, Not Coded)
 
 - **Client façade**: create/destroy client; initialize; new/load session; prompt; cancel.  
-- **Update stream**: single stream of typed events for plan items, message deltas, tool‑call events (created/updated/completed), diffs, available commands, and a terminal “turn ended” event with **StopReason**.  
+- **Update stream**: single stream of typed events for plan items with priorities, message deltas, tool‑call events (created/updated/completed with enhanced statuses), diffs, available commands with input hints, mode changes, and a terminal "turn ended" event with **StopReason**.  
 - **Providers**: 
   - **FS Provider**: read & write text files (workspace‑jail enforced; path normalization; symlink resolution).  
   - **Permission Provider**: policy or interactive decision for each `session/request_permission` (supports structured rationale and option rendering).  

@@ -246,6 +246,14 @@ void main() {
     test(
       'claude-code: terminal markers in text mode',
       () async {
+        // Check terminal support
+        // (lazy initialization - only runs process when needed)
+        final skipReason = await skipIfNoRuntimeTerminal('claude-code');
+        if (skipReason != null) {
+          markTestSkipped(skipReason);
+          return;
+        }
+        
         final proc = await Process.start('dart', [
           'example/main.dart',
           '--settings',
@@ -273,7 +281,7 @@ void main() {
         );
       },
       timeout: const Timeout(Duration(minutes: 3)),
-      skip: skipIfNoRuntimeTerminal('claude-code'),
+      // skip: skipIfNoRuntimeTerminal('claude-code'), // Now async - check in test body
     );
 
     test(
@@ -338,11 +346,13 @@ void main() {
     test(
       '--resume guarded by loadSession capability (error when unsupported)',
       () async {
-        final caps = capsFor('gemini');
+        // Check loadSession capability (lazy initialization)
+        final caps = await capsFor('gemini');
         final ac = caps.agentCapabilities;
         final supports = ac['loadSession'] == true;
         if (supports) {
-          return; // Skip if agent explicitly supports loadSession
+          markTestSkipped('Agent explicitly supports loadSession');
+          return;
         }
         final proc = await Process.start('dart', [
           'example/main.dart',
@@ -371,6 +381,14 @@ void main() {
     test(
       'claude-code: terminal frame appears in JSONL',
       () async {
+        // Check terminal support
+        // (lazy initialization - only runs process when needed)
+        final skipReason = await skipIfNoRuntimeTerminal('claude-code');
+        if (skipReason != null) {
+          markTestSkipped(skipReason);
+          return;
+        }
+        
         final proc = await Process.start('dart', [
           'example/main.dart',
           '--settings',
@@ -414,12 +432,20 @@ void main() {
         );
       },
       timeout: const Timeout(Duration(minutes: 3)),
-      skip: skipIfNoRuntimeTerminal('claude-code'),
+      // skip: skipIfNoRuntimeTerminal('claude-code'), // Now async - check in test body
     );
 
     test(
       'initialize (outbound) includes non-standard clientCapabilities.terminal',
       () async {
+        // Check terminal support
+        // (lazy initialization - only runs process when needed)
+        final skipReason = await skipIfNoRuntimeTerminal('claude-code');
+        if (skipReason != null) {
+          markTestSkipped(skipReason);
+          return;
+        }
+        
         final proc = await Process.start('dart', [
           'example/main.dart',
           '--settings',
@@ -461,7 +487,7 @@ void main() {
         );
       },
       timeout: const Timeout(Duration(minutes: 2)),
-      skip: skipIfNoRuntimeTerminal('claude-code'),
+      // skip: skipIfNoRuntimeTerminal('claude-code'), // Now async - check in test body
     );
     test('gemini: list caps (jsonl)', () async {
       final proc = await Process.start('dart', [

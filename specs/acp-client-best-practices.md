@@ -21,16 +21,19 @@ The ACP ecosystem has three categories of features:
 - Standard protocol features defined in the official specification
 - Includes: initialization, sessions, prompts, file system, permissions, tool calls
 - Guaranteed compatibility across all conformant implementations
+- Extensibility via optional `meta` fields on all protocol messages
 
 **Unstable Features**
 - Experimental features that may change or be removed
-- Currently includes: terminal capability
+- Currently includes: terminal capability, session modes, slash commands
 - Requires opt-in (e.g., `features = ["unstable"]` in Rust crate)
+- May be promoted to stable in future protocol versions
 
 **Implementation Extensions**
 - Custom features added by specific implementations (e.g., Zed)
-- Examples: session modes, model selection, available commands
+- Examples: session modes, model selection, available commands, plan priorities, diff views
 - Not portable across different ACP clients
+- Should use `meta` fields for custom data when extending protocol messages
 
 This document covers all three categories but clearly marks which is which.
 
@@ -102,6 +105,8 @@ Requirements
   call them.
 - If `authMethods` are present, clients MUST be prepared to call `authenticate`
   before creating sessions.
+- Optional `meta` fields MAY be included in requests/responses for extensibility
+  without breaking protocol compatibility.
 
 Zed example (client spawns agent, negotiates capabilities) Zed example
 (excerpt): crates/agent_servers/src/acp.rs
@@ -282,12 +287,21 @@ High‑level lifecycle
   - `user_message_chunk`: Echoing user's message being processed
   - `agent_message_chunk`: Agent's response text
   - `agent_thought_chunk`: Agent's internal reasoning (shown differently in UI)
-  - `plan`: Execution plan with task entries
+  - `plan`: Execution plan with task entries (may include priorities)
   - `tool_call`: New tool invocation
   - `tool_call_update`: Progress on existing tool call
   - `available_commands_update`: Dynamic command palette (core ACP)
   - `current_mode_update`: Mode changes (Zed extension)
 - Agent → Client: final `session/prompt` response containing `stopReason`.
+
+Plan details
+- Plans contain entries with `id`, `content`, and `status` (`pending`, `in_progress`, `completed`)
+- Entries MAY include `priority` levels (`high`, `medium`, `low`) for importance/ordering hints
+- Plans include overall `status` (`pending`, `in_progress`, `completed`, `failed`)
+- Clients SHOULD track plan statistics (pending, in-progress, completed counts)
+- Only one entry SHOULD be `in_progress` at a time for clarity
+- Plans are ephemeral - they represent the agent's current execution strategy
+- Updates to plan entries are sent via `plan` session updates with the full plan state
 
 Stop reasons
 - `end_turn`, `max_tokens`, `max_turn_requests`, `refusal`, `cancelled`.
@@ -383,6 +397,7 @@ Content blocks
 - `resource_link`: files or URIs (preferred)
 - `resource`: embedded resource contents (use sparingly)
 - `image`/`audio`: multimodal content
+- `thought`: agent's internal reasoning (shown differently in UI)
 
 Client rendering
 - Clients SHOULD render Markdown and handle large, incremental updates
@@ -522,7 +537,8 @@ Lifecycle
 2) Client MAY respond to `session/request_permission` to authorize execution;
    show arguments; support “always allow” if appropriate.
 3) Agent streams `ToolCallUpdate` with `status` transitions and `content` (e.g.,
-   diffs, terminal output, rich content).
+   diffs, terminal output, rich content). Diffs may be sent as separate 
+   `ToolCallUpdateDiff` updates for enhanced rendering.
 4) Agent sets `status: completed` and MAY include `raw_output` for debugging or
    auditing.
 
@@ -768,17 +784,18 @@ sequenceDiagram
 ```
 
 
-## 10. Modes and Model Selection (Zed Extension)
+## 10. Session Modes (UNSTABLE - Optional)
 
-**Status**: Zed-specific extension - not part of standard ACP.
+**Status**: UNSTABLE feature - may change or be removed.
 
-- Session modes: Custom feature allowing agents to expose modes (e.g., "code", "edit", "plan")
-  via `modes` in session setup and `set_session_mode` method.
-- Available commands: The `available_commands_update` in SessionUpdate IS part of core ACP,
-  allowing agents to advertise available commands dynamically.
-- Model selection: Implementation-specific feature for choosing different AI models.
-- Clients SHOULD surface mode selectors and command palettes when these extensions
-  are provided by the agent.
+Session modes allow agents to expose different operating modes that optimize for different tasks:
+
+- Modes are advertised in `session/new` and `session/load` responses
+- Switch modes via `session/set_mode` method
+- Mode changes trigger `current_mode_update` notifications
+- Common modes include: "code" (coding tasks), "edit" (editing existing code), "plan" (planning mode)
+- Clients SHOULD display mode selector UI when modes are available
+- Mode persistence across sessions is implementation-specific
 
 Zed example (excerpt): crates/agent_servers/src/acp.rs
 ```rust
@@ -832,7 +849,31 @@ On the wire
 ```
 
 
-## 11. Authentication
+## 11. Slash Commands (UNSTABLE - Optional)
+
+**Status**: UNSTABLE feature - may change or be removed.
+
+Slash commands provide quick access to specific agent functionality:
+
+- Advertised via `available_commands_update` notifications
+- Commands include: name, description, parameters
+- Execution via `session/slash_command` method
+- Dynamic availability based on context
+- Clients SHOULD provide command palette UI (/, Cmd+K, etc.)
+- Command completion and parameter validation are client responsibilities
+
+On the wire
+- Agent → Client (advertising commands)
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"explain","description":"Explain selected code"},{"name":"test","description":"Generate tests"}]}}}
+```
+
+Client should
+- Show command palette when user types "/" or uses keyboard shortcut
+- Validate parameters before sending to agent
+- Handle command not found errors gracefully
+
+## 12. Authentication
 
 - Agents advertise `authMethods` during `initialize`.
 - When `session/new` returns an `auth_required` error:
@@ -962,18 +1003,38 @@ Sources:
 - MCP: https://agentclientprotocol.com/overview/architecture#mcp
 
 
-## 15. Versioning & Compatibility
+## 15. Extensibility
+
+The protocol is designed to be extensible without breaking compatibility:
+
+- **Meta fields**: All protocol types include optional `meta` fields for custom data
+- **Custom methods**: Implementations MAY add custom JSON-RPC methods (namespace with vendor prefix)
+- **Custom notifications**: Additional notification types allowed (namespace recommended)
+- **Custom capabilities**: Advertise via `meta` field in capabilities objects
+- **Unknown fields**: Clients and Agents MUST ignore unknown fields (forward compatibility)
+- **Version negotiation**: Protocol version only increments for breaking changes
+
+Best practices for extensions:
+- Use vendor prefixes for custom methods (e.g., `zed/custom_method`)
+- Document custom fields in implementation docs
+- Gracefully handle absence of custom features
+- Use feature detection via capabilities, not version checks
+- Preserve `meta` fields when forwarding messages
+
+## 16. Versioning & Compatibility
 
 - Negotiate `protocolVersion` in `initialize`; clients SHOULD enforce a minimum
   supported version and fail fast with a user‑facing error.
 - Prefer forward‑compatible handling of unknown fields in streamed updates.
+- Protocol version is a single integer identifying MAJOR version
+- Only incremented for breaking changes; features added via capabilities
 
 Sources:
 - MINIMUM_SUPPORTED_VERSION and enforcement:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/agent_servers/src/acp.rs#L165
 
 
-## 16. Telemetry, Tracing, and Debugging
+## 17. Telemetry, Tracing, and Debugging
 
 - Provide a log/trace view of JSON‑RPC traffic for troubleshooting.
 - Correlate request/response IDs and show direction (incoming/outgoing) and
@@ -1015,7 +1076,7 @@ Sources:
 - https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_tools/src/acp_tools.rs#L164
 
 
-## 17. Testing & Conformance
+## 18. Testing & Conformance
 
 Minimal conformance checklist (client)
 - Initialize: negotiates protocol version; declares only true capabilities
@@ -1041,15 +1102,19 @@ Trace fixture format (for tests)
 - Validate ordering, streaming, and final stop reason for each prompt turn.
 
 
-## 18. Integration Patterns (Hosts like Zed)
+## 19. Integration Patterns (Hosts like Zed)
 
 - Process lifecycle: spawn agent with piped stdio; kill on drop; stream stderr
   into host logs with JSON recognition fallback.
+- Connection management: maintain global registry of active connections; associate
+  with server names; clean up on disconnect.
 - Session model: associate `sessionId` with a thread UI and action log; manage
   modes/model selection per session.
 - UI: incremental rendering of message chunks, thoughts, plans; rich diffs;
   terminal panes; explicit permission prompts with argument previews and
   locations.
+- Diff rendering: dedicated diff entities with old/new text tracking; support
+  incremental updates and acceptance workflows.
 
 Sources:
 - Stderr background task:
@@ -1060,7 +1125,7 @@ Sources:
   https://github.com/zed-industries/zed/blob/e5c03730115e5578567d0f99edf374dc1296f3ee/crates/acp_thread/src/acp_thread.rs#L984
 
 
-## 19. Implementation Notes (non‑normative)
+## 20. Implementation Notes (non‑normative)
 
 - Dart-specific: Stdio transport: `LineSplitter` for inbound frames;
   `stdout.writeln` for outbound; keep stderr for logs.
@@ -1074,7 +1139,24 @@ Sources:
   payloads.
 
 
-## 20. References
+## 21. Supported Ecosystem
+
+### Supported Editors
+- [Zed](https://zed.dev/docs/ai/external-agents) - native support
+- [neovim](https://neovim.io/) via [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
+- [yetone/avante.nvim](https://github.com/yetone/avante.nvim) - Cursor AI IDE emulation
+
+### Supported Agents
+- [Gemini](https://github.com/google-gemini/gemini-cli) - Google's Gemini models
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) via adapters:
+  - [Zed's SDK adapter](https://github.com/zed-industries/claude-code-acp)
+  - [Xuanwo's SDK adapter](https://github.com/Xuanwo/acp-claude-code)
+
+### Libraries
+- [TypeScript](https://www.npmjs.com/package/@zed-industries/agent-client-protocol)
+- [Rust](https://crates.io/crates/agent-client-protocol)
+
+## 22. References
 
 ACP specification
 - Overview: https://agentclientprotocol.com/overview/introduction
