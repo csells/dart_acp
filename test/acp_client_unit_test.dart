@@ -2,8 +2,11 @@
 
 // ignore_for_file: avoid_dynamic_calls
 
+import 'dart:io';
+
 import 'package:dart_acp/dart_acp.dart';
 import 'package:dart_acp/src/security/workspace_jail.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
@@ -116,6 +119,49 @@ void main() {
       // Test resolving relative path
       final resolved = await jail.resolveAndEnsureWithin('src/file.txt');
       expect(resolved, contains('src/file.txt'));
+    });
+  });
+
+  group('DefaultFsProvider', () {
+    test('write outside workspace is denied', () async {
+      final tmp = await Directory.systemTemp.createTemp('acp_ws_');
+      addTearDown(
+        () async => tmp.existsSync() ? tmp.delete(recursive: true) : null,
+      );
+      final ws = Directory(p.join(tmp.path, 'ws'))..createSync(recursive: true);
+
+      final provider = DefaultFsProvider(workspaceRoot: ws.path);
+      final outsideFile = p.join(tmp.path, 'outside.txt');
+
+      expect(
+        () => provider.writeTextFile(outsideFile, 'nope'),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
+
+    test('yolo reads outside allowed; writes outside still denied', () async {
+      final tmp = await Directory.systemTemp.createTemp('acp_ws_yolo_');
+      addTearDown(
+        () async => tmp.existsSync() ? tmp.delete(recursive: true) : null,
+      );
+      final ws = Directory(p.join(tmp.path, 'ws'))..createSync(recursive: true);
+      final outsideFile = File(p.join(tmp.path, 'outside.txt'))
+        ..writeAsStringSync('outside');
+
+      final provider = DefaultFsProvider(
+        workspaceRoot: ws.path,
+        allowReadOutsideWorkspace: true,
+      );
+
+      // Read outside should succeed in yolo mode
+      final read = await provider.readTextFile(outsideFile.path);
+      expect(read, contains('outside'));
+
+      // Write outside should still be denied
+      expect(
+        () => provider.writeTextFile(outsideFile.path, 'nope'),
+        throwsA(isA<FileSystemException>()),
+      );
     });
   });
 

@@ -217,7 +217,7 @@ Options:
   -o, --output <mode>    Output mode: text, simple, jsonl, json (default: text)
   --settings <path>      Use specific settings.json file
   --write                Enable write operations (confined to CWD)
-  --yolo                 Enable read-everywhere and write
+  --yolo                 Enable read-anywhere; writes remain confined to CWD
   --list-caps            Show agent capabilities
   --list-modes           Show available session modes
   --list-commands        Show slash commands
@@ -276,7 +276,7 @@ Non-interactive permission handling via flags:
 # Enable writes (confined to CWD)
 dart example/acpcli/acpcli.dart --write "Create a new file"
 
-# Read anywhere + write
+# Read anywhere; writes remain confined to CWD
 dart example/acpcli/acpcli.dart --yolo "Search system files"
 ```
 
@@ -437,8 +437,8 @@ Some Gemini models have ACP implementation bugs. Solution:
 
 ### Permission Denied
 Agents need explicit permissions for file operations:
-- Use `--write` for write operations
-- Use `--yolo` for unrestricted read + write
+- Use `--write` for write operations (confined to the workspace/CWD)
+- Use `--yolo` for read-anywhere; writes still remain confined to the workspace
 
 ### Authentication Required
 Authenticate with the agent's native tools first:

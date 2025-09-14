@@ -193,7 +193,7 @@ dart example/acpcli/acpcli.dart [options] [--] [prompt]
 | Flag | Description | Effect |
 |------|-------------|--------|
 | `--write` | Enable write operations | Allows fs.writeTextFile |
-| `--yolo` | Enable unrestricted access | Read anywhere + write enabled |
+| `--yolo` | Enable read‑anywhere (debug) | Read anywhere; writes enabled but confined to workspace |
 
 #### List Operations
 
@@ -329,6 +329,11 @@ Non-interactive permission handling based on CLI flags:
 | Write (in workspace) | ❌ Deny | ✅ Allow | ✅ Allow |
 | Write (outside workspace) | ❌ Deny | ❌ Deny | ❌ Deny |
 | Other operations | ✅ Allow | ✅ Allow | ✅ Allow |
+
+Classification notes
+- Read operations include file reads (e.g., `fs/read_text_file`).
+- Write operations include file edits/creation (e.g., `fs/write_text_file`).
+- Execute operations include terminal lifecycle (e.g., `terminal/create`).
 
 ### Environment Security
 - No credential storage or management

@@ -52,6 +52,13 @@ class AcpClient {
 
   /// Dispose the transport and release resources.
   Future<void> dispose() async {
+    // Close JSON-RPC peer first to stop inbound traffic cleanly,
+    // then dispose session resources and finally stop the transport.
+    try {
+      await _peer.close();
+    } on Exception catch (_) {
+      // Ignore close errors during shutdown
+    }
     await _sessionManager.dispose();
     await _transport.stop();
   }

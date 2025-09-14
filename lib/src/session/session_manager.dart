@@ -12,6 +12,7 @@ import '../providers/fs_provider.dart';
 import '../providers/permission_provider.dart';
 import '../providers/terminal_provider.dart';
 import '../rpc/peer.dart';
+import '../security/workspace_jail.dart';
 
 /// Alias for a JSON map used in requests/responses.
 typedef Json = Map<String, dynamic>;
@@ -384,11 +385,34 @@ class SessionManager {
       throw Exception('No workspace root available for filesystem operation');
     }
 
-    // Create a session-specific provider
+    // Create a session-specific provider honoring configured access policy
     final provider = DefaultFsProvider(
       workspaceRoot: workspaceRoot,
       allowReadOutsideWorkspace: config.allowReadOutsideWorkspace,
+      // yolo does NOT allow writes outside workspace
     );
+
+    // Enforce permission policy for reads when provided (non-interactive
+    // policy mode). Agents may or may not request permission explicitly;
+    // we gate here to ensure policy is always respected.
+    try {
+      final outcome = await config.permissionProvider.request(
+        PermissionOptions(
+          title: 'Read file',
+          rationale: 'Agent requested to read a file',
+          options: const ['allow', 'deny'],
+          sessionId: sessionId ?? '',
+          toolName: 'read_text_file',
+          toolKind: 'read',
+        ),
+      );
+      if (outcome != PermissionOutcome.allow) {
+        throw Exception('Permission denied');
+      }
+    } catch (e) {
+      _log.fine('fs/read_text_file -> denied by policy');
+      rethrow;
+    }
 
     final path = req['path'] as String;
     final line = (req['line'] as num?)?.toInt();
@@ -420,11 +444,32 @@ class SessionManager {
       throw Exception('No workspace root available for filesystem operation');
     }
 
-    // Create a session-specific provider
+    // Create a session-specific provider honoring configured access policy
     final provider = DefaultFsProvider(
       workspaceRoot: workspaceRoot,
       allowReadOutsideWorkspace: config.allowReadOutsideWorkspace,
+      // yolo does NOT allow writes outside workspace
     );
+
+    // Enforce permission policy for writes when provided.
+    try {
+      final outcome = await config.permissionProvider.request(
+        PermissionOptions(
+          title: 'Write file',
+          rationale: 'Agent requested to write a file',
+          options: const ['allow', 'deny'],
+          sessionId: sessionId ?? '',
+          toolName: 'write_text_file',
+          toolKind: 'edit',
+        ),
+      );
+      if (outcome != PermissionOutcome.allow) {
+        throw Exception('Permission denied');
+      }
+    } catch (e) {
+      _log.fine('fs/write_text_file -> denied by policy');
+      rethrow;
+    }
 
     final path = req['path'] as String;
     final content = req['content'] as String? ?? '';
@@ -502,15 +547,49 @@ class SessionManager {
     if (provider == null) {
       throw Exception('Terminal not supported');
     }
+    final sessionId = req['sessionId'] as String? ?? '';
+
+    // Enforce permission for execute/terminal usage. If policy denies, reject
+    // terminal creation so the agent cannot bypass FS jail via shell.
+    final execOutcome = await config.permissionProvider.request(
+      PermissionOptions(
+        title: 'Create terminal',
+        rationale: 'Agent requested to execute commands',
+        options: const ['allow', 'deny'],
+        sessionId: sessionId,
+        toolName: 'terminal',
+        toolKind: 'execute',
+      ),
+    );
+    if (execOutcome != PermissionOutcome.allow) {
+      throw Exception('Permission denied');
+    }
     final cmd = req['command'] as String;
     final args = (req['args'] as List?)?.cast<String>() ?? const [];
-    final sessionId = req['sessionId'] as String? ?? '';
-    final cwd = req['cwd'] as String?;
+    var cwd = req['cwd'] as String?;
     final envList = (req['env'] as List?)?.cast<Map<String, dynamic>>();
     final env = <String, String>{
       if (envList != null)
         for (final e in envList) (e['name'] as String): (e['value'] as String),
     };
+    // Enforce workspace jail for terminal working directory unless yolo
+    if (!config.allowReadOutsideWorkspace) {
+      final jail = WorkspaceJail(workspaceRoot: getWorkspaceRoot(sessionId));
+      if (cwd != null) {
+        try {
+          final resolved = await jail.resolveForgiving(cwd);
+          final within = await jail.isWithinWorkspace(resolved);
+          if (!within) {
+            cwd = getWorkspaceRoot(sessionId);
+          }
+        } on Exception catch (_) {
+          cwd = getWorkspaceRoot(sessionId);
+        }
+      } else {
+        cwd = getWorkspaceRoot(sessionId);
+      }
+    }
+
     final handle = await provider.create(
       sessionId: sessionId,
       command: cmd,

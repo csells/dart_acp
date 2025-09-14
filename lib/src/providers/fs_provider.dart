@@ -26,6 +26,8 @@ class DefaultFsProvider implements FsProvider {
   /// When true, allow reads outside the workspace root (writes still denied).
   final bool allowReadOutsideWorkspace;
 
+  // Writes outside the workspace are never allowed.
+
   @override
   Future<String> readTextFile(String path, {int? line, int? limit}) async {
     final filePath = allowReadOutsideWorkspace
@@ -53,8 +55,7 @@ class DefaultFsProvider implements FsProvider {
 
   @override
   Future<void> writeTextFile(String path, String content) async {
-    // Writes must stay within the workspace; if requested outside, fail with
-    // a descriptive error so the agent can adjust.
+    // Writes must stay within the workspace (never allowed outside).
     final canonical = await _jail.resolveForgiving(path);
     if (!await _jail.isWithinWorkspace(canonical)) {
       throw FileSystemException(

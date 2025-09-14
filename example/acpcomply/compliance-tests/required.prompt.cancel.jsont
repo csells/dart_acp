@@ -25,7 +25,7 @@
           "prompt": [
             {
               "type": "text",
-              "text": "Think a bit then respond."
+              "text": "Please count from 1 to 100 slowly, showing each number on a separate line with a brief pause between each number. After each group of 10 numbers, add a comment about the pattern you see."
             }
           ]
         }

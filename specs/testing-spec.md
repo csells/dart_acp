@@ -96,6 +96,9 @@ Unit tests run quickly, cover logic in isolation, and may use mocks.
 - File: `test/fs_jail_unit_test.dart`
 - Validates workspace jail behavior and path handling separate from AcpClient/CLI flows.
 
+### Policy Invariants
+- Yolo mode: reading outside the workspace is allowed; writing outside the workspace is always denied. Unit tests in `test/acp_client_unit_test.dart` assert this invariant for `DefaultFsProvider`.
+
 ## Helpers & Fixtures
 
 - `test/helpers/adapter_caps.dart`

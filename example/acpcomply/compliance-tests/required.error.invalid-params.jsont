@@ -23,7 +23,8 @@
           "prompt": {
             "oops": true
           }
-        }
+        },
+        "expectError": true
       }
     },
     {
@@ -32,7 +33,6 @@
         "messages": [
           {
             "response": {
-              "id": 28,
               "error": {
                 "code": "^-32602$"
               }

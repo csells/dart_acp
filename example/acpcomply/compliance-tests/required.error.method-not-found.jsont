@@ -18,7 +18,8 @@
         "jsonrpc": "2.0",
         "id": 99,
         "method": "this/method/does/not/exist",
-        "params": {}
+        "params": {},
+        "expectError": true
       }
     },
     {
@@ -27,7 +28,6 @@
         "messages": [
           {
             "response": {
-              "id": 99,
               "error": {
                 "code": "^-32601$"
               }

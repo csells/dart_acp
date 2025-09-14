@@ -79,6 +79,7 @@ Steps array (`steps: []`) – each item is one of:
   - `capture` (string): variable to store `sessionId`
 
 - `send` (object): a single JSON-RPC frame to send (client→agent)
+  - `expectError` (boolean, optional): if true, expects a JSON-RPC error response (default: false)
 
 - `expect` (object): wait window for server messages
   - `timeoutMs` (number, default 10000)

@@ -123,6 +123,7 @@ sequenceDiagram
 
   App->>Lib: AcpClient.start(config)
   Lib->>Lib: Start transport & initialize peer
+  Lib->>Lib: On dispose, close JSON‑RPC peer before stopping transport
   App->>Lib: initialize()
   Lib->>Agent: initialize(protocolVersion, clientCapabilities)
   Agent-->>Lib: initialize.result(protocolVersion, agentCapabilities)
@@ -219,7 +220,7 @@ Constraints
 - **Update stream**: single stream of typed events (`AcpUpdate`) with a required `text` property for easy text extraction. Includes plan items with priorities, message deltas, tool‑call events (created/updated/completed with enhanced statuses), diffs, available commands with input hints, mode changes, and a terminal "turn ended" event with **StopReason**.  
 - **Providers**: 
   - **FS Provider**: read & write text files with per-session workspace jail enforcement. The provider is instantiated dynamically with the session's workspace root.  
-  - **Permission Provider**: policy or interactive decision for each `session/request_permission` (supports structured rationale and option rendering).  
+  - **Permission Provider**: policy or interactive decision for each `session/request_permission` (supports structured rationale and option rendering). The library additionally enforces permission policy for FS and terminal operations even if an agent does not explicitly request permission, to ensure host policy cannot be bypassed.  
   - **Terminal Provider**: create/monitor/kill/release terminal subprocesses on behalf of the agent; corresponding UI events are available to hosts.
 - **Transport**: stdio process (spawn agent binary; configurable executable + args + cwd + extra env).  
 - **Configuration**: see §6 (environment-only configuration; no credential flows in client).
@@ -279,7 +280,7 @@ To support multiple ACP agents and per‑agent launch options, the example CLI r
   - `--list-commands`: print available slash commands (AvailableCommand[]) without sending a prompt; waits for `available_commands_update`.  
   - `--list-modes`: print available session modes without sending a prompt.
   - `--list-caps`: print initialize results (protocolVersion, authMethods, agentCapabilities) without sending a prompt. Note: plan/diff/terminal are runtime behaviors and will not appear here. In JSONL mode, rely on mirrored `initialize` frames; in text mode, a concise summary is printed.  
-  - `--yolo`: enables read‑everywhere and write capability (writes still confined to CWD).  
+  - `--yolo`: enables read‑everywhere and write capability; writes remain confined to the session workspace (CWD).  
   - `--write`: enables write capability (still confined to CWD).  
   - `--resume <id>` / `--save-session <path>`: session resume helpers.  
   - `--help` (`-h`): prints usage.
@@ -418,7 +419,7 @@ dart example/bin/acpcli/main.dart [options] [--] [prompt]
 
 - If `prompt` is provided, it is sent as a single turn to the agent.  
 - If `prompt` is omitted, the CLI reads the prompt from stdin until EOF.  
-- The working directory (`cwd`) is used as the workspace root and FS jail.
+- The working directory (`cwd`) is used as the workspace root and FS jail. Writes are only permitted within this workspace. `--yolo` affects read paths only.
 
 ### 17.2 Options
 
@@ -435,7 +436,7 @@ dart example/bin/acpcli/main.dart [options] [--] [prompt]
 
 Note: Multiple `--list-xxx` flags can be combined in a single invocation. They output in order (capabilities → modes → commands) with blank lines between sections. If a prompt is also provided, lists are shown first, then the prompt is processed using the same session.
 
-**Non-interactive behavior**: The CLI is fully non-interactive. Permission requests from agents are automatically handled based on CLI flags: write operations are allowed with `--write` or `--yolo`, denied otherwise. All other operations are automatically allowed. No user prompts are displayed.
+**Non-interactive behavior**: The CLI is fully non-interactive. Permission requests from agents are passed through a policy based on CLI flags: write operations are allowed with `--write` or `--yolo` (still confined to the workspace), denied otherwise. Other operations (e.g., reads, terminal/execute) default to allow but still flow through the PermissionProvider so a host policy can deny them.
 
 ### 17.3 Configuration (`settings.json` next to CLI)
 
@@ -534,6 +535,8 @@ echo "Refactor the following code…" | dart example/bin/acpcli/main.dart -o jso
 
 - Methods: `read_text_file(path, line?, limit?)`, `write_text_file(path, content)`.
 - Jail: The workspace root (session `cwd`) is the security boundary. Paths are resolved and canonicalized (incl. symlinks) before enforcement. Writes outside the jail are denied. Reads may be optionally allowed outside the jail via `AcpConfig.allowReadOutsideWorkspace` for debugging only.
+ - Jail: The workspace root (session `cwd`) is the security boundary. Paths are resolved and canonicalized (incl. symlinks) before enforcement. Writes outside the jail are denied (always). Reads may be optionally allowed outside the jail via `AcpConfig.allowReadOutsideWorkspace` for debugging only.
+ - Terminal: `terminal/create` requires execute permission; when allowed, the working directory is clamped to the session workspace unless `allowReadOutsideWorkspace` is set. Read‑anywhere does not imply write‑anywhere.
 - Semantics: `line` is a 1‑based starting line; `limit` is number of lines to return. If only `limit` is provided, return the first `limit` lines.
 - Wire names: Handlers are registered as `read_text_file` and `write_text_file` (no `fs/` prefix), matching ACP examples. Terminal lifecycle handlers are registered as `create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`.
 - Diagnostics: FS requests/responses (paths, byte counts, errors) are logged via the session manager’s `Logger`.

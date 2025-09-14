@@ -717,6 +717,11 @@ sequenceDiagram
 - UX: Offer a dedicated terminal view per tool call; make output scannable and
   copyable.
 - ClientCapabilities: Declared via `terminal: true` (boolean field)
+ 
+Security and policy guidance
+- Enforce a per-session workspace jail for terminal working directories; clamp `cwd` to the session workspace unless a read-anywhere debug mode is explicitly enabled.
+- Never allow writes outside the workspace. Read-anywhere does not imply write-anywhere.
+- Gate `create_terminal` behind an explicit execute permission prompt or policy decision.
 
 Zed example (excerpt): crates/agent_servers/src/acp.rs
 

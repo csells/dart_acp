@@ -27,7 +27,12 @@ Future<void> main([List<String> argv = const []]) async {
       help: 'Run only the specified test id(s)',
     )
     ..addOption('agent', abbr: 'a', help: 'Run only the specified agent')
-    ..addFlag('verbose', abbr: 'v', negatable: false, help: 'Print JSON-RPC I/O and expectation diagnostics');
+    ..addFlag(
+      'verbose',
+      abbr: 'v',
+      negatable: false,
+      help: 'Print JSON-RPC I/O and expectation diagnostics',
+    );
   late ArgResults args;
   try {
     args = parser.parse(argv);
@@ -107,10 +112,13 @@ Future<void> main([List<String> argv = const []]) async {
       // Interpolate common variables
       testContent = testContent
           .replaceAll(r'${protocolVersionDefault}', '1')
-          .replaceAll(r'${clientCapabilitiesDefault}', jsonEncode({
-            'fs': {'readTextFile': true, 'writeTextFile': true},
-            'terminal': true,
-          }));
+          .replaceAll(
+            r'${clientCapabilitiesDefault}',
+            jsonEncode({
+              'fs': {'readTextFile': true, 'writeTextFile': true},
+              'terminal': true,
+            }),
+          );
 
       final testJson = jsonDecode(testContent) as Map<String, dynamic>;
       final verdict = await _runSingleTest(
@@ -187,8 +195,8 @@ Future<String> _runSingleTest(
         inbound.add(jsonDecode(line) as Map<String, dynamic>);
       } on Object {
         // Ignore non-JSON lines (agent logs)
-      } 
-   }
+      }
+    }
 
     void onOut(String line) {
       if (verbose) stdout.writeln('[OUT] $line');
@@ -222,208 +230,254 @@ Future<String> _runSingleTest(
     );
     final client = await AcpClient.start(config: config);
 
-    // Initialize if not sent by the test
-    final sendsInit = stepsArr.any(
-      (s) => (s['send'] as Map<String, dynamic>?)?['method'] == 'initialize',
-    );
-    var agentCaps = const <String, dynamic>{};
-    if (!sendsInit) {
-      final initR = await client.initialize();
-      agentCaps = initR.agentCapabilities ?? const {};
-    }
+    try {
+      // Initialize if not sent by the test
+      final sendsInit = stepsArr.any(
+        (s) => (s['send'] as Map<String, dynamic>?)?['method'] == 'initialize',
+      );
+      var agentCaps = const <String, dynamic>{};
+      if (!sendsInit) {
+        final initR = await client.initialize();
+        agentCaps = initR.agentCapabilities ?? const {};
+      }
 
-    // Evaluate preconditions (agent capabilities) if present
-    final preconditions =
-        (test['preconditions'] as List?)?.cast<Map<String, dynamic>>() ??
-        const [];
-    for (final pre in preconditions) {
-      final capPath = pre['agentCap'] as String?;
-      if (capPath != null) {
-        final want = pre['mustBe'] as bool? ?? true;
-        final actual = _readPath(agentCaps, capPath);
-        if ((actual == true) != want) {
-          await client.dispose();
-          return 'NA';
-        }
-      }
-    }
-
-    final steps = stepsArr;
-    final vars = <String, String>{
-      'sandbox': sandbox.path,
-      'protocolVersionDefault': '1',
-      'clientCapabilitiesDefault': jsonEncode({
-        'fs': {'readTextFile': true, 'writeTextFile': true},
-        'terminal': true,
-      }),
-    };
-
-    Future<bool> waitExpect(Map<String, dynamic> expect) async {
-      final timeoutMs = (expect['timeoutMs'] as num?)?.toInt() ?? 10000;
-      final messages = (expect['messages'] as List)
-          .cast<Map<String, dynamic>>();
-      final start = DateTime.now();
-      final matched = List<bool>.filled(messages.length, false);
-      while (DateTime.now().difference(start).inMilliseconds < timeoutMs) {
-        for (var i = 0; i < messages.length; i++) {
-          if (matched[i]) continue;
-          final env = _interpolateVars(messages[i], vars);
-          final resp = env['response'] as Map<String, dynamic>?;
-          final notif = env['notification'] as Map<String, dynamic>?;
-          final clientReq = env['clientRequest'] as Map<String, dynamic>?;
-          if (resp != null) {
-            // Treat id like any other field (regex-capable) via partial match
-            final ok = inbound.any((m) => _partialMatch(m, resp));
-            matched[i] = ok;
-          } else if (notif != null) {
-            final ok = inbound.any(
-              (m) => m['method'] == notif['method'] && _partialMatch(m, notif),
-            );
-            matched[i] = ok;
-          } else if (clientReq != null) {
-            final ok = inbound.any(
-              (m) =>
-                  m['method'] == clientReq['method'] &&
-                  _partialMatch(m, clientReq),
-            );
-            matched[i] = ok;
-            // NOTE: replies are handled by providers; test-specified replies
-            // are ignored here
-          }
-        }
-        if (matched.every((e) => e)) return true;
-        await Future.delayed(const Duration(milliseconds: 50));
-      }
-      if (verbose) {
-        for (var i = 0; i < messages.length; i++) {
-          if (!matched[i]) {
-            stdout.writeln('[EXPECT NOT MET] ${jsonEncode(messages[i])}');
-          }
-        }
-        final tail = inbound.length > 10
-            ? inbound.sublist(inbound.length - 10)
-            : inbound;
-        for (final m in tail) {
-          stdout.writeln('[SEEN] ${jsonEncode(m)}');
-        }
-      }
-      return false;
-    }
-
-    Future<bool> waitForbid(Map<String, dynamic> forbid) async {
-      final timeoutMs = (forbid['timeoutMs'] as num?)?.toInt() ?? 5000;
-      final methods = (forbid['methods'] as List).cast<String>();
-      final startSize = inbound.length;
-      await Future.delayed(Duration(milliseconds: timeoutMs));
-      final slice = inbound.sublist(startSize);
-      Map<String, dynamic>? found;
-      for (final m in slice) {
-        if (methods.contains(m['method'])) {
-          found = m;
-          break;
-        }
-      }
-      final hit = found != null;
-      if (hit && verbose) {
-        stdout.writeln('[FORBID HIT] ${found['method']}: ${jsonEncode(found)}');
-      }
-      return !hit;
-    }
-
-    for (final step in steps) {
-      if (step.containsKey('delayMs')) {
-        await Future.delayed(
-          Duration(milliseconds: (step['delayMs'] as num).toInt()),
-        );
-        continue;
-      }
-      if (step.containsKey('newSession')) {
-        final sid = await client.newSession(sandbox.path);
-        vars['sessionId'] = sid;
-        continue;
-      }
-      if (step.containsKey('send')) {
-        final send = step['send'] as Map<String, dynamic>;
-        final method = send['method'] as String;
-        if (method == 'initialize') {
-          final params = _interpolateVars(
-            send['params'] as Map<String, dynamic>? ?? const {},
-            vars,
-          );
-          await client.sendRaw('initialize', params);
-        } else if (method == 'session/prompt') {
-          final params = send['params'] as Map<String, dynamic>? ?? const {};
-          final sid = params['sessionId'] as String? ?? vars['sessionId'];
-          final prompt = params['prompt'];
-          if (sid == null) {
+      // Evaluate preconditions (agent capabilities) if present
+      final preconditions =
+          (test['preconditions'] as List?)?.cast<Map<String, dynamic>>() ??
+          const [];
+      for (final pre in preconditions) {
+        final capPath = pre['agentCap'] as String?;
+        if (capPath != null) {
+          final want = pre['mustBe'] as bool? ?? true;
+          final actual = _readPath(agentCaps, capPath);
+          if ((actual == true) != want) {
             await client.dispose();
-            return 'FAIL';
+            return 'NA';
           }
-          if (prompt is List || prompt is Map) {
-            final rawParams = _interpolateVars(params, vars);
-            await client.sendRaw('session/prompt', rawParams);
-          } else {
-            final content = _stringifyPrompt(prompt, sandbox.path);
-            if (content == null) {
+        }
+      }
+
+      final steps = stepsArr;
+      final vars = <String, String>{
+        'sandbox': sandbox.path,
+        'protocolVersionDefault': '1',
+        'clientCapabilitiesDefault': jsonEncode({
+          'fs': {'readTextFile': true, 'writeTextFile': true},
+          'terminal': true,
+        }),
+      };
+
+      Future<bool> waitExpect(Map<String, dynamic> expect) async {
+        final timeoutMs = (expect['timeoutMs'] as num?)?.toInt() ?? 10000;
+        final messages = (expect['messages'] as List)
+            .cast<Map<String, dynamic>>();
+        final start = DateTime.now();
+        final matched = List<bool>.filled(messages.length, false);
+        while (DateTime.now().difference(start).inMilliseconds < timeoutMs) {
+          for (var i = 0; i < messages.length; i++) {
+            if (matched[i]) continue;
+            final env = _interpolateVars(messages[i], vars);
+            final resp = env['response'] as Map<String, dynamic>?;
+            final notif = env['notification'] as Map<String, dynamic>?;
+            final clientReq = env['clientRequest'] as Map<String, dynamic>?;
+            if (resp != null) {
+              // Treat id like any other field (regex-capable) via partial match
+              final ok = inbound.any((m) => _partialMatch(m, resp));
+              matched[i] = ok;
+            } else if (notif != null) {
+              final ok = inbound.any(
+                (m) =>
+                    m['method'] == notif['method'] && _partialMatch(m, notif),
+              );
+              matched[i] = ok;
+            } else if (clientReq != null) {
+              final ok = inbound.any(
+                (m) =>
+                    m['method'] == clientReq['method'] &&
+                    _partialMatch(m, clientReq),
+              );
+              matched[i] = ok;
+              // NOTE: replies are handled by providers; test-specified replies
+              // are ignored here
+            }
+          }
+          if (matched.every((e) => e)) return true;
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+        if (verbose) {
+          for (var i = 0; i < messages.length; i++) {
+            if (!matched[i]) {
+              stdout.writeln('[EXPECT NOT MET] ${jsonEncode(messages[i])}');
+            }
+          }
+          final tail = inbound.length > 10
+              ? inbound.sublist(inbound.length - 10)
+              : inbound;
+          for (final m in tail) {
+            stdout.writeln('[SEEN] ${jsonEncode(m)}');
+          }
+        }
+        return false;
+      }
+
+      Future<bool> waitForbid(Map<String, dynamic> forbid) async {
+        final timeoutMs = (forbid['timeoutMs'] as num?)?.toInt() ?? 5000;
+        final methods = (forbid['methods'] as List).cast<String>();
+        final startSize = inbound.length;
+        await Future.delayed(Duration(milliseconds: timeoutMs));
+        final slice = inbound.sublist(startSize);
+        Map<String, dynamic>? found;
+        for (final m in slice) {
+          if (methods.contains(m['method'])) {
+            found = m;
+            break;
+          }
+        }
+        final hit = found != null;
+        if (hit && verbose) {
+          stdout.writeln(
+            '[FORBID HIT] ${found['method']}: ${jsonEncode(found)}',
+          );
+        }
+        return !hit;
+      }
+
+      for (final step in steps) {
+        if (step.containsKey('delayMs')) {
+          await Future.delayed(
+            Duration(milliseconds: (step['delayMs'] as num).toInt()),
+          );
+          continue;
+        }
+        if (step.containsKey('newSession')) {
+          final sid = await client.newSession(sandbox.path);
+          vars['sessionId'] = sid;
+          continue;
+        }
+        if (step.containsKey('send')) {
+          final send = step['send'] as Map<String, dynamic>;
+          final method = send['method'] as String;
+          final expectError = send['expectError'] as bool? ?? false;
+          if (method == 'initialize') {
+            final params = _interpolateVars(
+              send['params'] as Map<String, dynamic>? ?? const {},
+              vars,
+            );
+            await client.sendRaw('initialize', params);
+          } else if (method == 'session/prompt') {
+            final params = _interpolateVars(
+              send['params'] as Map<String, dynamic>? ?? const {},
+              vars,
+            );
+            final sid = params['sessionId'] as String? ?? vars['sessionId'];
+            final prompt = params['prompt'];
+            if (sid == null) {
               await client.dispose();
               return 'FAIL';
             }
-            unawaited(client.prompt(sessionId: sid, content: content).drain());
+            if (prompt is List || prompt is Map) {
+              final rawParams = _interpolateVars(params, vars);
+              if (expectError) {
+                try {
+                  await client.sendRaw('session/prompt', rawParams);
+                } on Exception {
+                  // Expected for error tests - continue to check expectations
+                }
+              } else {
+                await client.sendRaw('session/prompt', rawParams);
+              }
+            } else {
+              final content = _stringifyPrompt(prompt, sandbox.path);
+              if (content == null) {
+                await client.dispose();
+                return 'FAIL';
+              }
+              unawaited(
+                client.prompt(sessionId: sid, content: content).drain(),
+              );
+            }
+          } else if (method == 'session/cancel') {
+            final params = _interpolateVars(
+              send['params'] as Map<String, dynamic>? ?? const {},
+              vars,
+            );
+            final sid = params['sessionId'] as String? ?? vars['sessionId'];
+            if (sid == null) {
+              await client.dispose();
+              return 'FAIL';
+            }
+            await client.cancel(sessionId: sid);
+          } else if (method == 'session/set_mode') {
+            final params = _interpolateVars(
+              send['params'] as Map<String, dynamic>? ?? const {},
+              vars,
+            );
+            final sid = params['sessionId'] as String? ?? vars['sessionId'];
+            final modeId = params['modeId'] as String?;
+            if (sid == null || modeId == null) {
+              await client.dispose();
+              return 'FAIL';
+            }
+            await client.setMode(sessionId: sid, modeId: modeId);
+          } else if (method == 'session/load') {
+            final params = _interpolateVars(
+              send['params'] as Map<String, dynamic>? ?? const {},
+              vars,
+            );
+            final sid = params['sessionId'] as String? ?? vars['sessionId'];
+            final cwd = params['cwd'] as String? ?? sandbox.path;
+            await client.loadSession(sessionId: sid!, workspaceRoot: cwd);
+          } else if (method == 'session/new') {
+            // handled by newSession step
+          } else {
+            final params = _interpolateVars(
+              send['params'] as Map<String, dynamic>? ?? const {},
+              vars,
+            );
+            if (expectError) {
+              try {
+                await client.sendRaw(method, params);
+              } on Exception {
+                // Expected for error tests - continue to check expectations
+              }
+            } else {
+              await client.sendRaw(method, params);
+            }
           }
-        } else if (method == 'session/cancel') {
-          final params = send['params'] as Map<String, dynamic>? ?? const {};
-          final sid = params['sessionId'] as String? ?? vars['sessionId'];
-          if (sid == null) {
+          continue;
+        }
+        if (step.containsKey('expect')) {
+          final ok = await waitExpect(step['expect'] as Map<String, dynamic>);
+          if (!ok) {
             await client.dispose();
             return 'FAIL';
           }
-          await client.cancel(sessionId: sid);
-        } else if (method == 'session/set_mode') {
-          final params = send['params'] as Map<String, dynamic>? ?? const {};
-          final sid = params['sessionId'] as String? ?? vars['sessionId'];
-          final modeId = params['modeId'] as String?;
-          if (sid == null || modeId == null) {
+          continue;
+        }
+        if (step.containsKey('forbid')) {
+          final ok = await waitForbid(step['forbid'] as Map<String, dynamic>);
+          if (!ok) {
             await client.dispose();
             return 'FAIL';
           }
-          await client.setMode(sessionId: sid, modeId: modeId);
-        } else if (method == 'session/load') {
-          final params = send['params'] as Map<String, dynamic>? ?? const {};
-          final sid = params['sessionId'] as String? ?? vars['sessionId'];
-          final cwd = params['cwd'] as String? ?? sandbox.path;
-          await client.loadSession(sessionId: sid!, workspaceRoot: cwd);
-        } else if (method == 'session/new') {
-          // handled by newSession step
-        } else {
-          final params = _interpolateVars(
-            send['params'] as Map<String, dynamic>? ?? const {},
-            vars,
-          );
-          await client.sendRaw(method, params);
+          continue;
         }
-        continue;
       }
-      if (step.containsKey('expect')) {
-        final ok = await waitExpect(step['expect'] as Map<String, dynamic>);
-        if (!ok) {
-          await client.dispose();
-          return 'FAIL';
-        }
-        continue;
-      }
-      if (step.containsKey('forbid')) {
-        final ok = await waitForbid(step['forbid'] as Map<String, dynamic>);
-        if (!ok) {
-          await client.dispose();
-          return 'FAIL';
-        }
-        continue;
-      }
-    }
 
-    await client.dispose();
-    return 'PASS';
-  } on Exception catch (_) {
+      await client.dispose();
+      return 'PASS';
+    } on Exception catch (e, st) {
+      if (verbose) {
+        stdout.writeln('[ERROR] Test failed with exception: $e');
+        stdout.writeln('[STACK] $st');
+      }
+      await client.dispose();
+      return 'FAIL';
+    }
+  } on Exception catch (e) {
+    if (verbose) {
+      stdout.writeln('[ERROR] Failed to create client: $e');
+    }
     return 'FAIL';
   } finally {
     await sandbox.delete(recursive: true);

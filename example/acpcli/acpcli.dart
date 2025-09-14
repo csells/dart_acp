@@ -82,20 +82,31 @@ Future<void> main(List<String> argv) async {
     permissionProvider: DefaultPermissionProvider(
       onRequest: (opts) async {
         // Non-interactive: decide based on CLI flags
-        // --yolo or --write enables write operations
         final allowWrites = args.write || args.yolo;
 
-        // Check if this is a write operation
-        final isWriteOp =
-            opts.toolKind?.toLowerCase().contains('write') ?? false;
+        // Classify write-like operations per spec semantics
+        final isWriteOp = _isWriteLike(opts.toolName, opts.toolKind);
 
-        // Auto-decide based on flags
         final decision = (!isWriteOp || allowWrites)
             ? PermissionOutcome.allow
             : PermissionOutcome.deny;
 
-        // Log the decision in text mode (not in JSONL mode)
-        if (!args.output.isJsonLike) {
+        // Surface decision with helpful hint
+        if (args.output.isJsonLike) {
+          // Emit a JSONL metadata line for automation-friendly logging
+          final payload = {
+            'jsonrpc': '2.0',
+            'method': 'client/permission_decision',
+            'params': {
+              'toolName': opts.toolName,
+              if (opts.toolKind != null) 'toolKind': opts.toolKind,
+              'decision': decision == PermissionOutcome.allow ? 'allow' : 'deny',
+              if (decision == PermissionOutcome.deny && isWriteOp)
+                'hint': 'Use --write or --yolo to enable writes (still confined to workspace)'
+            },
+          };
+          stdout.writeln(jsonEncode(payload));
+        } else {
           final action = decision == PermissionOutcome.allow ? 'allow' : 'deny';
           stdout.writeln(
             '[permission] auto-$action ${opts.toolName}'
@@ -103,7 +114,7 @@ Future<void> main(List<String> argv) async {
           );
           if (decision == PermissionOutcome.deny && isWriteOp) {
             stdout.writeln(
-              '[permission] Use --write or --yolo to enable writes',
+              '[permission] Use --write or --yolo to enable writes (confined to workspace)',
             );
           }
         }
@@ -254,6 +265,24 @@ Future<void> main(List<String> argv) async {
   await client.dispose();
   // Normal completion
   exit(0);
+}
+
+bool _isWriteLike(String toolName, String? toolKind) {
+  final kind = toolKind?.toLowerCase();
+  if (kind == 'edit' || kind == 'delete' || kind == 'move') {
+    return true;
+  }
+  final name = toolName.toLowerCase();
+  const writeNames = <String>{
+    'write_text_file',
+    'fs/write_text_file',
+    'delete_file',
+    'fs/delete_file',
+    'move_file',
+    'fs/move_file',
+  };
+  if (writeNames.contains(name)) return true;
+  return false;
 }
 
 Future<String?> _readPrompt(CliArgs args) async {
