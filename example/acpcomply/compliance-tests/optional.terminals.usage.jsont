@@ -1,0 +1,82 @@
+{
+  "title": "Agent uses terminal APIs when asked to run a shell command",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/terminals"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Run a shell command that prints 'acp'."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 8000,
+        "messages": [
+          {
+            "clientRequest": {
+              "jsonrpc": "2.0",
+              "method": "terminal/create",
+              "params": {
+                "sessionId": "^${sessionId}$",
+                "command": ".+"
+              }
+            },
+            "reply": {
+              "result": {
+                "terminalId": "term_compliance"
+              }
+            }
+          },
+          {
+            "clientRequest": {
+              "jsonrpc": "2.0",
+              "method": "terminal/wait_for_exit"
+            }
+          },
+          {
+            "clientRequest": {
+              "jsonrpc": "2.0",
+              "method": "terminal/output"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 8000,
+        "messages": [
+          {
+            "response": {
+              "id": 12,
+              "result": {
+                "stopReason": "^(end_turn|max_tokens|max_turn_requests|refusal)$"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

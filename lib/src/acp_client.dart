@@ -13,14 +13,20 @@ import 'transport/transport.dart';
 /// High-level ACP client that manages transport, session lifecycle,
 /// and streams updates from the agent.
 class AcpClient {
-  /// Create a client with the given configuration and optional transport.
+  /// Private constructor - use [AcpClient.start] to create instances.
+  AcpClient._({required this.config, required AcpTransport transport})
+    : _transport = transport;
+
+  /// Create and start a client with the given configuration.
   /// If no transport is provided, creates a StdioTransport that spawns
   /// the agent.
-  AcpClient({required this.config, AcpTransport? transport}) {
-    _transport =
+  static Future<AcpClient> start({
+    required AcpConfig config,
+    AcpTransport? transport,
+  }) async {
+    final actualTransport =
         transport ??
         StdioTransport(
-          cwd: config.workspaceRoot,
           command: config.agentCommand,
           args: config.agentArgs,
           envOverrides: config.envOverrides,
@@ -28,50 +34,46 @@ class AcpClient {
           onProtocolOut: config.onProtocolOut,
           onProtocolIn: config.onProtocolIn,
         );
+
+    await actualTransport.start();
+
+    final client = AcpClient._(config: config, transport: actualTransport);
+    client._peer = JsonRpcPeer(actualTransport.channel);
+    client._sessionManager = SessionManager(config: config, peer: client._peer);
+
+    return client;
   }
 
   /// Client configuration.
   final AcpConfig config;
-  late final AcpTransport _transport;
-  JsonRpcPeer? _peer;
-  SessionManager? _sessionManager;
-
-  /// Start the underlying transport and wire JSON-RPC peer.
-  Future<void> start() async {
-    await _transport.start();
-    _peer = JsonRpcPeer(_transport.channel);
-    _sessionManager = SessionManager(config: config, peer: _peer!);
-  }
+  final AcpTransport _transport;
+  late final JsonRpcPeer _peer;
+  late final SessionManager _sessionManager;
 
   /// Dispose the transport and release resources.
   Future<void> dispose() async {
-    if (_sessionManager != null) {
-      await _sessionManager!.dispose();
-    }
+    await _sessionManager.dispose();
     await _transport.stop();
   }
 
   /// Send `initialize` to negotiate protocol and capabilities.
   Future<InitializeResult> initialize({
     AcpCapabilities? capabilitiesOverride,
-  }) async {
-    _ensureReady();
-    return _sessionManager!.initialize(
-      capabilitiesOverride: capabilitiesOverride,
-    );
-  }
+  }) async =>
+      _sessionManager.initialize(capabilitiesOverride: capabilitiesOverride);
 
   /// Create a new ACP session; returns the session id.
-  Future<String> newSession({String? cwd}) async {
-    _ensureReady();
-    return _sessionManager!.newSession(cwd: cwd);
-  }
+  Future<String> newSession(String workspaceRoot) async =>
+      _sessionManager.newSession(workspaceRoot: workspaceRoot);
 
   /// Load an existing session (if the agent supports it).
-  Future<void> loadSession({required String sessionId, String? cwd}) async {
-    _ensureReady();
-    return _sessionManager!.loadSession(sessionId: sessionId, cwd: cwd);
-  }
+  Future<void> loadSession({
+    required String sessionId,
+    required String workspaceRoot,
+  }) async => _sessionManager.loadSession(
+    sessionId: sessionId,
+    workspaceRoot: workspaceRoot,
+  );
 
   /// Send a prompt to the agent and stream `AcpUpdate`s.
   ///
@@ -83,83 +85,59 @@ class AcpClient {
     required String sessionId,
     required String content,
   }) {
-    _ensureReady();
+    final workspaceRoot = _sessionManager.getWorkspaceRoot(sessionId);
     final contentBlocks = ContentBuilder.buildFromPrompt(
       content,
-      workspaceRoot: config.workspaceRoot,
+      workspaceRoot: workspaceRoot,
     );
-    return _sessionManager!.prompt(
-      sessionId: sessionId,
-      content: contentBlocks,
-    );
+    return _sessionManager.prompt(sessionId: sessionId, content: contentBlocks);
   }
 
   /// Subscribe to the persistent session updates stream (includes replay).
-  Stream<AcpUpdate> sessionUpdates(String sessionId) {
-    _ensureReady();
-    return _sessionManager!.sessionUpdates(sessionId);
-  }
+  Stream<AcpUpdate> sessionUpdates(String sessionId) =>
+      _sessionManager.sessionUpdates(sessionId);
 
   /// Cancel the current turn for the given session.
-  Future<void> cancel({required String sessionId}) async {
-    _ensureReady();
-    return _sessionManager!.cancel(sessionId: sessionId);
-  }
+  Future<void> cancel({required String sessionId}) async =>
+      _sessionManager.cancel(sessionId: sessionId);
 
   /// Terminal events stream for UI.
-  Stream<TerminalEvent> get terminalEvents {
-    _ensureReady();
-    return _sessionManager!.terminalEvents;
-  }
+  Stream<TerminalEvent> get terminalEvents => _sessionManager.terminalEvents;
 
   /// Read current buffered output for a managed terminal.
-  Future<String> terminalOutput(String terminalId) async {
-    _ensureReady();
-    return _sessionManager!.readTerminalOutput(terminalId);
-  }
+  Future<String> terminalOutput(String terminalId) async =>
+      _sessionManager.readTerminalOutput(terminalId);
 
   /// Kill a managed terminal process.
   Future<void> terminalKill(String terminalId) async {
-    _ensureReady();
-    await _sessionManager!.killTerminal(terminalId);
+    await _sessionManager.killTerminal(terminalId);
   }
 
   /// Wait for a managed terminal process to exit.
-  Future<int?> terminalWaitForExit(String terminalId) async {
-    _ensureReady();
-    return _sessionManager!.waitTerminal(terminalId);
-  }
+  Future<int?> terminalWaitForExit(String terminalId) async =>
+      _sessionManager.waitTerminal(terminalId);
 
   /// Release resources for a managed terminal.
   Future<void> terminalRelease(String terminalId) async {
-    _ensureReady();
-    await _sessionManager!.releaseTerminal(terminalId);
-  }
-
-  void _ensureReady() {
-    if (_peer == null || _sessionManager == null) {
-      throw StateError('AcpClient not started. Call start() first.');
-    }
+    await _sessionManager.releaseTerminal(terminalId);
   }
 
   // ===== Modes (extension) =====
 
   /// Get current/available modes for a session, if provided by the agent.
   ({String? currentModeId, List<({String id, String name})> availableModes})?
-  sessionModes(String sessionId) {
-    _ensureReady();
-    return _sessionManager!.sessionModes(sessionId);
-  }
+  sessionModes(String sessionId) => _sessionManager.sessionModes(sessionId);
 
   /// Set the session mode (extension). Returns true on success.
   Future<bool> setMode({
     required String sessionId,
     required String modeId,
-  }) async {
-    _ensureReady();
-    return _sessionManager!.setSessionMode(
-      sessionId: sessionId,
-      modeId: modeId,
-    );
-  }
+  }) async =>
+      _sessionManager.setSessionMode(sessionId: sessionId, modeId: modeId);
+
+  /// Send an arbitrary JSON-RPC request (advanced; for compliance harness).
+  Future<Map<String, dynamic>> sendRaw(
+    String method,
+    Map<String, dynamic> params,
+  ) async => _peer.sendRaw(method, params);
 }

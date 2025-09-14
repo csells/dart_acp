@@ -20,8 +20,9 @@ This library enables Dart apps—and `dartantic_ai` via a small adapter—to tal
 
 ### 1.1 Library vs CLI
 
-- **Library (`dart_acp`)**: A reusable client providing transports, JSON‑RPC peer, session management, providers (FS, permissions, terminal), and a typed updates stream. It is UI‑agnostic and agent‑agnostic. The library does not read `settings.json`; callers must provide `workspaceRoot`, `agentCommand`, `agentArgs`, and `envOverrides` explicitly.
-- **Example CLI (`example/main.dart`)**: A minimal command‑line program demonstrating the library. The CLI resolves the agent via `settings.json` located next to the CLI (script directory), starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--jsonl/-j`.
+- **Library (`dart_acp`)**: A reusable client providing transports, JSON‑RPC peer, session management, providers (FS, permissions, terminal), and a typed updates stream. It is UI‑agnostic and agent‑agnostic. The library does not read `settings.json`; callers must provide `agentCommand`, `agentArgs`, and `envOverrides` explicitly. The `workspaceRoot` is specified per session, not globally.
+- **Example CLI (`example/bin/acpcli/main.dart`)**: A command‑line program demonstrating the library. The CLI resolves the agent via `settings.json` located next to the CLI (script directory), starts a session in the current working directory, sends a single prompt, streams updates to stdout, and supports `--agent/-a` and `--jsonl/-j`.
+- **Simple Example (`example/main.dart`)**: A minimal example showing basic library usage with hardcoded agent configuration.
 
 ---
 
@@ -120,9 +121,12 @@ sequenceDiagram
   participant Lib as dart_acp
   participant Agent as ACP Agent
 
-  App->>Lib: Create client (caps, transport config)
+  App->>Lib: AcpClient.start(config)
+  Lib->>Lib: Start transport & initialize peer
+  App->>Lib: initialize()
   Lib->>Agent: initialize(protocolVersion, clientCapabilities)
   Agent-->>Lib: initialize.result(protocolVersion, agentCapabilities)
+  App->>Lib: newSession(workspaceRoot)
   Lib->>Agent: session/new (cwd, mcpServers?)
   Agent-->>Lib: session/new.result(sessionId)
 ```
@@ -136,7 +140,7 @@ sequenceDiagram
   participant Lib as dart_acp
   participant Agent as ACP Agent
 
-  App->>Lib: prompt(sessionId, content[])
+  App->>Lib: prompt(sessionId, content, workspaceRoot)
   Lib->>Agent: session/prompt
   loop streaming updates
     Agent-->>Lib: session/update (plan|message|tool_call_update|diff|available_commands_update)
@@ -208,12 +212,13 @@ Constraints
 
 ---
 
-## 7. Public Surfaces (Described, Not Coded)
+## 7. Public Surfaces
 
-- **Client façade**: create/destroy client; initialize; new/load session; prompt; cancel.  
-- **Update stream**: single stream of typed events for plan items with priorities, message deltas, tool‑call events (created/updated/completed with enhanced statuses), diffs, available commands with input hints, mode changes, and a terminal "turn ended" event with **StopReason**.  
+- **Client façade**: `AcpClient.start()` factory constructor creates and starts the client; `newSession(workspaceRoot)`; `prompt(sessionId, content, workspaceRoot)`; cancel; dispose.
+- **API Design**: The client uses a factory constructor pattern (`AcpClient.start()`) to ensure proper initialization. Workspace root is session-specific, not client-specific.  
+- **Update stream**: single stream of typed events (`AcpUpdate`) with a required `text` property for easy text extraction. Includes plan items with priorities, message deltas, tool‑call events (created/updated/completed with enhanced statuses), diffs, available commands with input hints, mode changes, and a terminal "turn ended" event with **StopReason**.  
 - **Providers**: 
-  - **FS Provider**: read & write text files (workspace‑jail enforced; path normalization; symlink resolution).  
+  - **FS Provider**: read & write text files with per-session workspace jail enforcement. The provider is instantiated dynamically with the session's workspace root.  
   - **Permission Provider**: policy or interactive decision for each `session/request_permission` (supports structured rationale and option rendering).  
   - **Terminal Provider**: create/monitor/kill/release terminal subprocesses on behalf of the agent; corresponding UI events are available to hosts.
 - **Transport**: stdio process (spawn agent binary; configurable executable + args + cwd + extra env).  
@@ -224,7 +229,7 @@ Constraints
 ## 8. Configuration (Library)
 
 - **Agent command**: executable name and args (provided explicitly by the host).  
-- **Workspace root**: absolute path used for FS jail and as the default `cwd` for new sessions.  
+- **Workspace root**: absolute path specified per session via `newSession(workspaceRoot)` and `prompt(workspaceRoot)`, used for FS jail enforcement.  
 - **Client capabilities**: booleans for `fs.readTextFile`, `fs.writeTextFile`, etc. Default: read enabled, write disabled.  
 - **Environment behavior**: inherit parent env by default; optional additional env map; no persistence.  
 - **MCP servers**: optional list forwarded to `session/new` and `session/load`.  
@@ -403,12 +408,12 @@ When `--jsonl`/`-j` is set:
 
 ## 17. Example CLI (Design & Usage)
 
-The example CLI in `example/main.dart` demonstrates how to use the `dart_acp` library from a terminal. It is intentionally minimal and intended as reference code, not a polished tool.
+The example CLI in `example/bin/acpcli/main.dart` demonstrates how to use the `dart_acp` library from a terminal with configurable agents via `settings.json`.
 
 ### 17.1 Synopsis
 
 ```bash
-dart example/main.dart [options] [--] [prompt]
+dart example/bin/acpcli/main.dart [options] [--] [prompt]
 ```
 
 - If `prompt` is provided, it is sent as a single turn to the agent.  
@@ -434,7 +439,7 @@ Note: Multiple `--list-xxx` flags can be combined in a single invocation. They o
 
 ### 17.3 Configuration (`settings.json` next to CLI)
 
-The CLI uses the schema in §8.1. The file must exist next to the CLI (the `example/` directory when running `dart example/main.dart`).
+The CLI uses the schema in §8.1. The file must exist next to the CLI script (the `example/bin/acpcli/` directory when running `dart example/bin/acpcli/main.dart`).
 
 Example:
 
@@ -514,13 +519,13 @@ The CLI is prompt‑first: it doesn't synthesize protocol frames beyond `--list-
 
 ```bash
 # With inline prompt and default (first) agent
-dart example/main.dart "Summarize README.md"
+dart example/bin/acpcli/main.dart "Summarize README.md"
 
 # Select agent explicitly and enable JSONL protocol mirroring
-dart example/main.dart -a my-agent -o jsonl "List available commands"
+dart example/bin/acpcli/main.dart -a my-agent -o jsonl "List available commands"
 
 # Read prompt from stdin
-echo "Refactor the following code…" | dart example/main.dart -o jsonl
+echo "Refactor the following code…" | dart example/bin/acpcli/main.dart -o jsonl
 ```
 
 ---
@@ -632,3 +637,7 @@ Terminal lifecycle methods remain standard (`create_terminal`, `terminal_output`
 - **Early Process Exit Detection**: Added 100ms delay in StdioTransport to detect and report agent crashes with meaningful error messages.
 - **Session Update Replay**: Fixed TurnEnded markers to be included in replay buffer for proper session resumption.
 - **Invalid Session Handling**: Changed to throw ArgumentError for invalid session IDs instead of returning empty streams.
+- **API Refactoring** (Major Change):
+  - Changed from `AcpClient(config)` + `await client.start()` to factory constructor `await AcpClient.start(config)` for clearer initialization semantics.
+  - Moved `workspaceRoot` from `AcpConfig` to be a required parameter in `newSession(workspaceRoot)` and `prompt(workspaceRoot)` since it's session-specific.
+  - Made `AcpUpdate` a sealed class with a required abstract `text` property that all subtypes must implement, providing easy text extraction via `update.text`.

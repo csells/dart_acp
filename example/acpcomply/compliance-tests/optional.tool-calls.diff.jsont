@@ -1,0 +1,78 @@
+{
+  "title": "Agent reports diff content in tool_call updates",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/tool-calls#content"
+  ],
+  "sandbox": {
+    "files": [
+      {
+        "path": "file.txt",
+        "text": "old"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Propose an edit to file.txt and show it as a diff."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 12000,
+        "messages": [
+          {
+            "notification": {
+              "jsonrpc": "2.0",
+              "method": "session/update",
+              "params": {
+                "update": {
+                  "sessionUpdate": "^tool_call(_update)?$",
+                  "content": [
+                    {
+                      "type": "^diff$",
+                      "path": ".*file.txt$",
+                      "newText": ".+"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 8000,
+        "messages": [
+          {
+            "response": {
+              "id": 24,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

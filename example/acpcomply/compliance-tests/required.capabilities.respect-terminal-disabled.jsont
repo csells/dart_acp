@@ -1,0 +1,55 @@
+{
+  "title": "Agent must not call terminal/* when capability is false",
+  "severity": "required",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/initialization#client-capabilities",
+    "https://agentclientprotocol.com/protocol/terminals"
+  ],
+  "init": {
+    "clientCapabilities": {
+      "fs": {
+        "readTextFile": true,
+        "writeTextFile": true
+      },
+      "terminal": false
+    }
+  },
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Run any shell command that prints acp."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "forbid": {
+        "timeoutMs": 6000,
+        "methods": [
+          "terminal/create",
+          "terminal/output",
+          "terminal/wait_for_exit",
+          "terminal/kill",
+          "terminal/release"
+        ]
+      }
+    }
+  ]
+}

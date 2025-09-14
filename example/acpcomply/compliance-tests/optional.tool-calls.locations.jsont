@@ -1,0 +1,76 @@
+{
+  "title": "Agent includes locations in tool call updates",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/tool-calls#following-the-agent"
+  ],
+  "sandbox": {
+    "files": [
+      {
+        "path": "follow.txt",
+        "text": "track"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 31,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Work on follow.txt and report locations."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 12000,
+        "messages": [
+          {
+            "notification": {
+              "jsonrpc": "2.0",
+              "method": "session/update",
+              "params": {
+                "update": {
+                  "sessionUpdate": "^tool_call(_update)?$",
+                  "locations": [
+                    {
+                      "path": ".*follow.txt$"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 8000,
+        "messages": [
+          {
+            "response": {
+              "id": 31,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

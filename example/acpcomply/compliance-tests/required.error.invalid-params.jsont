@@ -1,0 +1,45 @@
+{
+  "title": "Invalid params should return -32602",
+  "severity": "required",
+  "docs": [
+    "https://www.jsonrpc.org/specification#error_object"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 28,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": {
+            "oops": true
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 2000,
+        "messages": [
+          {
+            "response": {
+              "id": 28,
+              "error": {
+                "code": "^-32602$"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

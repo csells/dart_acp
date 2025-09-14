@@ -1,0 +1,92 @@
+{
+  "title": "Load session and observe replay",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/session-setup#loading-sessions",
+    "https://agentclientprotocol.com/protocol/schema#loadsessionrequest"
+  ],
+  "preconditions": [
+    {
+      "agentCap": "loadSession",
+      "mustBe": true
+    }
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 18,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Say hello"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 10000,
+        "messages": [
+          {
+            "response": {
+              "id": 18,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 19,
+        "method": "session/load",
+        "params": {
+          "sessionId": "${sessionId}",
+          "cwd": "${sandbox}",
+          "mcpServers": []
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 10000,
+        "messages": [
+          {
+            "notification": {
+              "jsonrpc": "2.0",
+              "method": "session/update",
+              "params": {
+                "sessionId": "^${sessionId}$",
+                "update": {
+                  "sessionUpdate": ".+"
+                }
+              }
+            }
+          },
+          {
+            "response": {
+              "id": 19,
+              "result": {}
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

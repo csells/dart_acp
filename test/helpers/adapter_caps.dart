@@ -21,7 +21,7 @@ Future<AgentCaps> capsFor(String agent) async {
   final proc = await Process.run(
     'dart',
     [
-      'example/main.dart',
+      'example/acpcli/acpcli.dart',
       '--settings',
       settingsPath,
       '-a',
@@ -122,7 +122,7 @@ Future<String?> skipIfNoRuntimeTerminal(String agent) async {
   final proc = await Process.run(
     'dart',
     [
-      'example/main.dart',
+      'example/acpcli/acpcli.dart',
       '--settings',
       settingsPath,
       '-a',

@@ -1,0 +1,61 @@
+{
+  "title": "Connect to local stdio MCP server",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/session-setup#mcp-servers",
+    "https://agentclientprotocol.com/protocol/schema#mcpserver"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "mcpServers": [
+          {
+            "name": "dart-mcp",
+            "command": "dart",
+            "args": [
+              "run",
+              "tool/mcp_server/bin/server.dart",
+              "--stdio"
+            ],
+            "env": []
+          }
+        ],
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 17,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Call the local MCP tool ping."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 12000,
+        "messages": [
+          {
+            "response": {
+              "id": 17,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

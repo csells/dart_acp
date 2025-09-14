@@ -1,635 +1,457 @@
-## dart_acp
+# dart_acp
 
-This repository contains a Dart package that implements the client side of [the
-Agent Client Protocol
-(ACP)](https://github.com/zed-industries/agent-client-protocol) that talks to an
-ACP agent over stdio JSON‑RPC. It handles transport, session lifecycle, routing
-updates, workspace jail, permissions, and optional terminal provider.
+A Dart implementation of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com), providing both a library for building ACP clients and a full-featured command-line tool for interacting with ACP agents.
 
-### Specs
+## Overview
 
-- `specs/acp-client-best-practices.md`: Language-agnostic ACP client best
-  practices with Dart notes—covers initialization, sessions,
-  streaming/cancellation, tool calls/permissions, FS/terminal, security,
-  telemetry, testing, and includes diagrams and a conformance checklist (with
-  Zed code references).
-- `specs/dart_acp_technical_design.md`: Technical design of the Dart ACP client
-  and example CLI—goals, architecture, lifecycle flows, providers (FS,
-  permissions, terminal), configuration, testing strategy, and open questions.
-- `specs/architecture-best-practices.md`: General architecture guidelines for
-  this repo—DRY, separation of concerns, SRP, low coupling/high cohesion,
-  observability/testability, security by design, and simplicity.
-- `specs/acp-llms.txt`: Local snapshot of the ACP specification website for
-  offline reference—initialization, session setup, prompt turn, tool calls, file
-  system, terminal, and schema.
+`dart_acp` enables Dart and Flutter applications to communicate with AI agents that implement the Agent Client Protocol. The package includes:
 
-### Features
-- **Latest ACP Protocol Support**: Full compatibility with the latest Agent
-  Client Protocol specification from agentclientprotocol.com.
-- **Stdio transport**: JSON‑RPC over stdin/stdout between client and agent.
-- **JSON‑RPC peer**: Bidirectional communication with client callbacks
-  (fs.read/write, permission prompts, terminal lifecycle).
-- **Enhanced Session Management**: `initialize`, `newSession`/`loadSession`,
-  `prompt` streaming with typed `AcpUpdate` events, `cancel`, and session mode
-  support.
-- **Protocol Version Enforcement**: Client verifies agent's protocol version
-  meets minimum requirements (currently v1).
-- **Comprehensive Providers**: FS jail enforcement, permission policies, and
-  terminal process management.
-- **Plan Handling with Priorities**: Support for execution plans with
-  high/medium/low priority levels and proper status tracking
-  (pending/in_progress/completed).
-- **Enhanced Tool Call Support**: Full tool kind categorization
-  (read/edit/delete/move/search/execute/think/fetch/other), location tracking,
-  and improved status handling (pending/in_progress/completed/failed/cancelled).
-- **Slash Command Support**: Available commands with input hints for enhanced
-  user experience.
-- **Session Modes**: Agent operating mode discovery, listing, and switching
-  capabilities.
-- **Extensibility**: Meta field support foundation for custom protocol
-  extensions.
-- **Permission Handling**: Respects configured permissions from AcpConfig and
-  CLI arguments, properly denying operations when permissions are not granted.
-- **Terminal Integration**: Terminal events stream for UIs
-  (created/output/exited/released) with non‑standard
-  `clientCapabilities.terminal: true` advertisement.
-- **Rich Tool Metadata**: Tool calls display titles, file locations, and raw
-  input/output snippets for better debugging and transparency.
+- **`dart_acp` library**: A complete ACP client implementation for Dart applications
+- **`acpcli` tool**: A command-line interface for testing and interacting with ACP agents
+- **`acpcomply` app**: A compliance runner that executes a comprehensive JSON test suite against agents and prints a Markdown report
 
-### Quick Start (Example CLI)
-```bash
-# Ensure example/settings.json exists next to the CLI (see specs)
-dart example/main.dart -a my-agent "Say hello"
-```
-See `specs/dart_acp_technical_design.md` §17 for full CLI usage.
+### Key Features
 
-### Prompt Input
-- Positional argument: Provide the prompt at the end of the command.
-  - Example: `dart example/main.dart -a gemini "Summarize README.md"`
-- Stdin: Pipe text into the CLI; it reads the entire stream as the prompt when
-  stdin is not a TTY.
-  - Example: `echo "List available commands" | dart example/main.dart -o jsonl`
+- **Full ACP Protocol Support**: Compatible with the latest specification from agentclientprotocol.com
+- **Streaming Updates**: Typed events for plans, tool calls, diffs, and agent messages
+- **Security**: Workspace jail enforcement, permission policies, and secure path handling
+- **Extensibility**: Support for session modes, slash commands, and protocol extensions
+- **Transport Abstraction**: JSON-RPC over stdio with bidirectional communication
+- **Rich Metadata**: Tool call tracking with kinds, locations, and execution status
 
-Full usage:
+### Documentation
 
-```
-Usage: dart example/main.dart [options] [--] [prompt]
+- [`specs/acpcli-requirements.md`](specs/acpcli-requirements.md): Complete requirements and feature documentation for the CLI
+- [`specs/dart_acp_technical_design.md`](specs/dart_acp_technical_design.md): Technical architecture and design decisions
+- [`specs/acp-client-best-practices.md`](specs/acp-client-best-practices.md): ACP implementation best practices with conformance checklist
 
-Options:
-  -a, --agent <name>     Select agent from settings.json next to this CLI
-      --settings <path>  Use a specific settings.json (overrides default next to CLI)
-  -o, --output <mode>    Output mode: jsonl|json|text|simple (default: text)
-      --yolo             Enable read-everywhere and write-enabled (writes still confined to CWD)
-      --write            Enable write capability (still confined to CWD)
-      --list-commands    Print available slash commands (ACP AvailableCommand) without sending a prompt
-      --list-modes       Print available session modes (no prompt sent)
-      --list-caps        Print capabilities from initialize (protocolVersion, authMethods, agentCapabilities) and exit
-      --mode <id>        Set session mode after creation
-      --resume <id>      Resume an existing session (replay), then send the prompt
-      --save-session <p> Save new sessionId to file
-  -h, --help             Show this help and exit
+---
 
-Note: The --list-xxx flags can be combined to show multiple types of information.
-They output in order: capabilities → modes → commands, with a blank line between
-each section. When combined with a prompt, the lists are shown first (with a blank
-line after), then the prompt is processed using the same session.
+## dart_acp Library
 
-The CLI is fully non-interactive. Permission requests from agents are automatically
-handled based on the flags: write operations are allowed with --write or --yolo,
-denied otherwise. All other operations are automatically allowed.
+The `dart_acp` library provides a high-level API for building ACP client applications.
 
-Prompt:
-  Provide as a positional argument, or pipe via stdin.
-  Use @-mentions to add context: @path, @"a file.txt", @https://example.com/file
+### Quick Start
 
-Examples:
-  dart example/main.dart -a my-agent "Summarize README.md"
-  echo "List available commands" | dart example/main.dart -o jsonl
-~/Code/dart_acp$ 
-```
+```dart
+import 'dart:io';
+import 'package:dart_acp/dart_acp.dart';
 
-### Output Modes
-- text (default): assistant text, plus plan/tool/diff/commands lines.
-  - Example: `dart example/main.dart -a gemini "Summarize README.md"`
-- simple: assistant text only (no plan/tool/diff/commands).
-  - Example: `dart example/main.dart -a claude-code -o simple "Hello"`
-- jsonl/json: raw JSON‑RPC frames mirrored to stdout.
-  - Example: `dart example/main.dart -a gemini -o json "Hello"`
+void main() async {
+  // Create and start the client
+  final client = await AcpClient.start(
+    config: AcpConfig(
+      agentCommand: 'npx',
+      agentArgs: ['@zed-industries/claude-code-acp'],
+    ),
+  );
 
-### File Mentions (@‑mentions)
-- Inline file/URL references in prompts:
-  - Local: `@path`, `@"file with spaces.txt"`, absolute or relative; `~`
-    expands.
-  - URLs: `@https://example.com/spec`.
-- The `@...` remains visible in the user text; a `resource_link` block is added
-  per mention.
-- Examples:
-  - `dart example/main.dart -a gemini "Review @lib/src/acp_client.dart"`
-  - `dart example/main.dart -a claude-code "Analyze @\"specs/dart acp.md\""`
-  - `dart example/main.dart -a gemini "Fetch @https://example.com/spec"`
+  // Initialize and create a session
+  await client.initialize();
+  final workspaceRoot = Directory.current.path;
+  final sessionId = await client.newSession(workspaceRoot);
 
-### MCP Servers
-- Configure top‑level `mcp_servers` in `example/settings.json`; they’re
-  forwarded to `session/new` and `session/load`.
-- Example snippet:
-  ```json
-  {
-    "mcp_servers": [
-      {
-        "name": "filesystem",
-        "command": "/abs/path/to/mcp-server",
-        "args": ["--stdio"],
-        "env": {"FOO": "bar"}
-      }
-    ]
+  // Send a prompt with @-mention support
+  final stream = client.prompt(
+    sessionId: sessionId,
+    content: 'examine @main.dart and explain what it does.',
+  );
+
+  // Stream the response
+  await for (final update in stream) {
+    print(update.text);
   }
-  ```
 
-### Session Resumption
-- Save session ID: `dart example/main.dart -a gemini --save-session /tmp/sid
-  "Hello"`
-- Resume and continue: `dart example/main.dart -a gemini --resume "$(cat
-  /tmp/sid)" "Continue"`
-- Resume with stdin: `echo "Continue" | dart example/main.dart -a claude-code
-  --resume "$(cat /tmp/sid)"`
-- Note: Session resumption (`--resume`) is only available if the agent
-  advertises `loadSession` capability. The CLI will exit with an error if you
-  attempt to resume with an agent that doesn't support it.
-
-### Agent Selection
-- `-a, --agent <name>` selects an entry from `agent_servers` in
-  `example/settings.json`.
-- Default is the first listed agent if `-a` is omitted.
-  - Examples: `-a gemini`, `-a claude-code`.
-- `--settings <path>` overrides the default `example/settings.json` (useful for
-  CI/tests).
-
-### Read / Write Permissions
-- `--write` enables write capability (writes remain confined to CWD).
-- `--yolo` enables read‑everywhere and write capability; writes still fail
-  outside CWD.
-  - Examples:
-    - `dart example/main.dart -a gemini --write "Create CHANGELOG entry"`
-    - `dart example/main.dart -a claude-code --yolo "Search @/etc/hosts"`
-
-### Cancellation
-- Ctrl‑C sends `session/cancel` and exits with code 130. Use when turns run
-  long.
-
-### Install Agents and ACP Adapters
-
-- Google Gemini CLI (ACP-capable):
-  - Repo: https://github.com/google-gemini/gemini-cli
-  - Install per the README, then authenticate (the CLI supports OAuth-style
-    login flows). Ensure the `gemini` binary is on your PATH.
-  - ACP: enable with `--experimental-acp` (the example `settings.json` uses this
-    flag).
-
-- Claude Code ACP Adapter:
-  - Recommended (Zed's SDK adapter):
-    https://github.com/zed-industries/claude-code-acp
-    - Run via `npx @zed-industries/claude-code-acp` (our default in
-      `example/settings.json`)
-    - Or install globally: `npm i -g @zed-industries/claude-code-acp` and invoke
-      `claude-code-acp`
-    - Authenticate per the adapter/Claude Code instructions (OAuth-style login
-      supported)
-    - This version properly sends available_commands_update after session
-      creation
-
-#### Usage examples
-
-Plain text (default agent):
-```bash
-dart example/main.dart "Summarize README.md"
-```
-
-Plain text (specific agent):
-```bash
-dart example/main.dart -a my-agent "Summarize README.md"
-```
-
-JSONL (default agent):
-```bash
-dart example/main.dart -o jsonl "Summarize README.md"
-```
-
-JSONL (specific agent):
-```bash
-dart example/main.dart -a my-agent -o jsonl "Summarize README.md"
-```
-
-Reading prompt from stdin:
-```bash
-# Pipe a prompt (plain text mode)
-echo "Refactor the following code…" | dart example/main.dart
-
-# Pipe a file as the prompt
-cat PROMPT.md | dart example/main.dart
-
-# Pipe with JSONL output
-echo "List available commands" | dart example/main.dart -o jsonl
-```
-
-#### Configuring agents (example/settings.json)
-
-Create or edit `example/settings.json` next to the CLI. Strict JSON (no
-comments/trailing commas):
-
-```json
-{
-  "agent_servers": {
-    "my-agent": {
-      "command": "your-agent-binary",
-      "args": ["--flag"],
-      "env": {
-        "FOO": "bar"
-      }
-    },
-    "gemini": {
-      "command": "gemini",
-      "args": ["--experimental-acp"]
-    },
-    "claude-code": {
-      "command": "npx",
-      "args": ["acp-claude-code"]
-    },
-    "another-agent": {
-      "command": "another-agent",
-      "args": []
-    }
-  }
+  // Clean up
+  await client.dispose();
+  exit(0);
 }
 ```
 
-Notes:
-- The CLI picks the first listed agent by default.
-- `-a/--agent` selects a specific agent by key.
-- The library itself does not read settings; it accepts explicit
-  command/args/env.
+See the full example: [`example/main.dart`](example/main.dart)
 
-Using the library directly:
+### Core Components
+
+#### AcpClient
+The main entry point for interacting with ACP agents:
 
 ```dart
-import 'package:dart_acp/dart_acp.dart';
-
-final client = AcpClient(
+final client = await AcpClient.start(
   config: AcpConfig(
-    workspaceRoot: '/path/to/workspace',
     agentCommand: 'your-agent-binary',
     agentArgs: ['--flag'],
-    envOverrides: {'FOO': 'bar'},
-    // Optional: enable terminal lifecycle and advertise non‑standard
-    // clientCapabilities.terminal for adapters that use it.
+    envOverrides: {'API_KEY': 'value'},
+    // Optional providers
+    fsProvider: myFsProvider,
+    permissionProvider: myPermissionProvider,
     terminalProvider: DefaultTerminalProvider(),
   ),
 );
 ```
-### Slash Commands
 
-Agents can expose slash commands (like `/help`, `/status`, etc.) via the ACP
-protocol. The CLI provides discovery and execution of these commands.
+#### Session Management
+```dart
+// Create a new session
+final sessionId = await client.newSession(workspaceRoot);
 
-#### Discovering Available Commands
+// Resume an existing session (if agent supports it)
+await client.loadSession(
+  sessionId: existingId,
+  workspaceRoot: workspaceRoot,
+);
 
-Use `--list-commands` to see what commands the agent supports:
-
-```bash
-# List commands without sending a prompt
-dart example/main.dart -a claude-code --list-commands
-
-# Example output:
-# # Commands (claude-code)
-# - /init - Initialize a new CLAUDE.md file with codebase documentation
-# - /review - Review a pull request
-# ...
-
-# Combine multiple list flags to see all information at once
-dart example/main.dart -a claude-code --list-caps --list-modes --list-commands
-
-# Output includes all three sections with agent name in headers:
-# # Capabilities (claude-code)
-# - Protocol Version: 1
-# ...
-# # Modes (claude-code)
-# - code - Coding
-# ...
-# # Commands (claude-code)
-# - /init - Initialize a new CLAUDE.md file
-# ...
-
-# List information and then process a prompt (reuses session)
-dart example/main.dart -a claude-code --list-modes "What files are in this directory?"
+// Subscribe to session updates
+client.sessionUpdates(sessionId).listen((update) {
+  if (update is PlanUpdate) {
+    print('Plan: ${update.plan.title}');
+  } else if (update is ToolCallUpdate) {
+    print('Tool: ${update.toolCall.title}');
+  }
+});
 ```
 
-Note: Gemini currently doesn't expose slash commands, so the list will be empty.
+#### @-Mention Support
+The library automatically parses @-mentions in prompts:
 
-### Session Modes (Extension)
-
-Some agents expose session modes (e.g., code/edit/plan). You can list and set
-modes when available. The client properly routes `current_mode_update` events
-from agents as typed `ModeUpdate` objects in the update stream.
-
-```bash
-# List modes without sending a prompt
-dart example/main.dart -a claude-code --list-modes
-
-# Example output (text mode):
-# # Modes (claude-code)
-# - code - Coding
-# - edit - Editing
-
-# JSONL: emits a single metadata record with availableModes
-dart example/main.dart -a claude-code --list-modes -o jsonl | jq 'select(.method=="client/modes")'
-
-# Set a mode before sending a prompt
-dart example/main.dart -a claude-code --mode edit "Refactor the logging pipeline"
+```dart
+// Local files: @file.txt, @"path with spaces/file.txt"
+// URLs: @https://example.com/resource
+// Home paths: @~/Documents/file.txt
+final updates = client.prompt(
+  sessionId: sessionId,
+  content: 'Review @lib/src/main.dart and @README.md',
+);
 ```
 
-### Capabilities (Initialize)
+#### Update Types
+The library provides strongly-typed update events:
 
-Inspect agent capabilities negotiated during `initialize`:
+- `MessageDelta`: Assistant response text chunks
+- `PlanUpdate`: Execution plans with priorities
+- `ToolCallUpdate`: Tool invocations with status
+- `DiffUpdate`: File modification diffs
+- `AvailableCommandsUpdate`: Slash commands
+- `ModeUpdate`: Session mode changes
+- `TurnEnded`: End of response with stop reason
 
-```bash
-# Human-readable summary (no session is created)
-dart example/main.dart -a claude-code --list-caps
+### Advanced Features
 
-# Example output (text mode)
-# # Capabilities (claude-code)
-# - Protocol Version: 1
-# - Auth Methods:
-#   - claude-login - Log in with Claude Code
-# - Agent Capabilities:
-#   - promptCapabilities:
-#     - embeddedContext: true
-#     - image: true
+#### Providers
+Customize behavior with pluggable providers:
 
-# JSONL frames (inspect the initialize result)
-dart example/main.dart -a claude-code -o jsonl --list-caps | jq 'select(.result!=null)'
-```
+```dart
+// File system provider with workspace jail
+class MyFsProvider implements FsProvider {
+  Future<String> readTextFile(String path, {int? line, int? limit}) async {
+    // Custom implementation
+  }
 
-The JSONL initialize result may include:
-- `protocolVersion`: negotiated protocol version
-- `authMethods`: available auth methods (if any)
-- `agentCapabilities`: adapter-reported capabilities (if any)
+  Future<void> writeTextFile(String path, String content) async {
+    // Custom implementation
+  }
+}
 
-Notes:
-- Plan, diff, available commands, and terminal output are runtime behaviors
-  communicated via `session/update` and tool payloads, not initialize
-  capabilities. You won’t see flags for those in `--list-caps`, but they still
-  work when supported by the adapter.
-
-#### Executing Commands
-
-Simply include the slash command in your prompt:
-
-```bash
-# Commands can be combined with other text
-dart example/main.dart -a claude-code "/review this PR and suggest improvements"
-```
-
-### Plans and Progress Tracking
-
-Agents can emit structured plans showing their approach to complex tasks, with
-real-time progress updates.
-
-#### Requesting Plans
-
-Ask the agent to create a plan before executing:
-
-```bash
-# Request a plan without execution
-dart example/main.dart -a gemini "Create a detailed plan to refactor the authentication module. Don't implement yet, just show the plan."
-
-# In text mode, plan updates appear as:
-# [plan] {"title": "Refactoring Authentication", "steps": [...], "status": "in_progress"}
-```
-
-#### Viewing Progress
-
-As the agent works through a plan, it emits progress updates:
-
-```bash
-# Execute a multi-step task with progress tracking
-dart example/main.dart -a claude-code "Add comprehensive error handling to all API endpoints"
-
-# Progress appears in text mode as:
-# [plan] {"step": 1, "description": "Analyzing existing error handling", "status": "complete"}
-# [plan] {"step": 2, "description": "Adding try-catch blocks", "status": "in_progress"}
-```
-
-#### JSONL Mode for Plans
-
-For programmatic access, use JSONL mode:
-
-```bash
-dart example/main.dart -a gemini -o jsonl "Create a testing strategy" | grep '"plan"'
-# Outputs session/update frames with plan details
-```
-
-### Diffs and Code Changes
-
-Agents can propose changes as diffs before applying them, allowing review of
-modifications.
-
-#### Requesting Diffs
-
-Ask for changes to be shown as diffs:
-
-```bash
-# Request a diff without applying changes
-dart example/main.dart -a claude-code "Show me a diff to add input validation to the login function. Don't apply the changes."
-
-# In text mode, diffs appear as:
-# [diff] {"file": "auth.js", "changes": [{"line": 42, "old": "...", "new": "..."}]}
-```
-
-#### Reviewing Before Applying
-
-```bash
-# Two-step process: review then apply
-dart example/main.dart -a gemini "Create a diff to optimize the database queries"
-# Review the diff output...
-dart example/main.dart -a gemini "Apply the optimization changes we just reviewed"
-```
-
-#### Diff Format in JSONL
-
-```bash
-# Get structured diff data
-dart example/main.dart -a claude-code -o jsonl "Propose type safety improvements" | jq '.params.update | select(.sessionUpdate == "diff")'
-```
-
-### Tool Calls and File Operations
-
-Monitor what tools the agent is using:
-
-```bash
-# In text mode, tool calls show kind/title and first location, with raw I/O snippets
-dart example/main.dart -a gemini "Analyze all Python files for security issues"
-# [tool] read Read file @ src/main.py
-# [tool.in] {"path":"src/main.py","line":1,"limit":200}
-# [tool.out] "import sys..."
-
-# In JSONL mode for detailed tool tracking
-dart example/main.dart -a claude-code -o jsonl "Update dependencies" | grep tool_call
-```
-
-### Terminals
-
-With a `TerminalProvider` configured, the client exposes standard terminal
-lifecycle handlers (create/output/wait/kill/release). For adapters that gate
-terminal tools behind a non‑standard client capability (e.g., Claude Code), the
-client includes `clientCapabilities.terminal: true` during `initialize` to
-enable those tools.
-
-Examples:
-
-```bash
-# Ask the agent to run a command in a terminal
-dart example/main.dart -a claude-code "Run the command: echo 'Hello from terminal'"
-
-# In text mode you will see terminal lifecycle markers
-# [term] created id=...
-# [term] output id=...
-# [term] exited id=... code=0
-
-# In JSONL mode, terminal content arrives inside tool_call updates
-dart example/main.dart -a claude-code -o jsonl "Run: ls -la" | jq '.params.update | select(.sessionUpdate=="tool_call_update")'
-```
-
-### Output Modes Summary
-
-The CLI supports different output modes to suit various use cases:
-
-| Mode   | Flag                | Description                  | Shows                                                        |
-| ------ | ------------------- | ---------------------------- | ------------------------------------------------------------ |
-| Text   | `-o text` (default) | Human-readable with metadata | Assistant messages, thinking, [plan], [diff], [tool] markers |
-| Simple | `-o simple`         | Clean output only            | Assistant messages only (no thinking or metadata)            |
-| JSONL  | `-o jsonl`          | Raw protocol frames          | All JSON-RPC messages, one per line                          |
-| JSON   | `-o json`           | Same as JSONL                | Alias for JSONL mode                                         |
-
-### Troubleshooting
-
-#### Gemini "Invalid argument" Errors
-
-If you're getting "Invalid argument" errors when using Gemini with ACP, the
-issue is likely with the specific Gemini model being used. Some Gemini models
-have bugs in their experimental ACP implementation.
-
-**Problem:** Setting `GEMINI_MODEL` to certain models (like
-`gemini-2.0-flash-exp` or `gemini-2.5-flash`) causes `session/prompt` requests
-to fail with:
-```json
-{
-  "error": {
-    "code": 400,
-    "message": "Request contains an invalid argument.",
-    "status": "INVALID_ARGUMENT"
+// Permission provider for security
+class MyPermissionProvider implements PermissionProvider {
+  Future<PermissionOutcome> requestPermission(
+    PermissionOptions options,
+  ) async {
+    // Return allow, deny, or cancelled
   }
 }
 ```
 
-**Solution:** 
-- Don't set the `GEMINI_MODEL` environment variable - let Gemini use its default
-  model
-- If you must use a specific model, test it first to ensure it works with ACP
-- Remove any `"env": {"GEMINI_MODEL": "..."}` from your `settings.json` for the
-  Gemini agent
+#### Session Modes (Extension)
+```dart
+// Get available modes
+final modes = client.sessionModes(sessionId);
+print('Current: ${modes?.currentModeId}');
+print('Available: ${modes?.availableModes}');
 
-**Working Configuration:**
+// Switch mode
+await client.setMode(sessionId: sessionId, modeId: 'edit');
+```
+
+---
+
+## acpcli Tool
+
+A comprehensive command-line interface for testing and interacting with ACP agents.
+
+### Installation & Setup
+
+1. Configure agents in `example/acpcli/settings.json`:
 ```json
 {
   "agent_servers": {
+    "claude-code": {
+      "command": "npx",
+      "args": ["@zed-industries/claude-code-acp"],
+      "env": {
+        "ACP_PERMISSION_MODE": "acceptEdits"
+      }
+    },
     "gemini": {
       "command": "gemini",
       "args": ["--experimental-acp"]
-      // No env overrides - uses default model
     }
   }
 }
 ```
 
-#### Permission Denied Errors
+2. Run the CLI:
+```bash
+dart example/acpcli/acpcli.dart "Your prompt here"
+```
 
-If agents are getting permission denied errors when trying to read or write
-files:
+See the full implementation: [`example/acpcli/acpcli.dart`](example/acpcli/acpcli.dart)
 
-**Problem:** The agent is requesting permissions that haven't been granted.
+### Usage
 
-**Solution:**
-- Use `--write` flag to enable write permissions: `dart example/main.dart
-  --write "Create a file"`
-- Use `--yolo` flag for read-everywhere + write: `dart example/main.dart --yolo
-  "Read system files"`
-- Note: Write operations are always confined to the current working directory
-  for security
+```
+dart example/acpcli/acpcli.dart [options] [--] [prompt]
 
-#### Agent Not Found
+Options:
+  -h, --help             Show help and exit
+  -a, --agent <name>     Select agent from settings.json
+  -o, --output <mode>    Output mode: text, simple, jsonl, json (default: text)
+  --settings <path>      Use specific settings.json file
+  --write                Enable write operations (confined to CWD)
+  --yolo                 Enable read-everywhere and write
+  --list-caps            Show agent capabilities
+  --list-modes           Show available session modes
+  --list-commands        Show slash commands
+  --mode <id>            Set session mode
+  --resume <id>          Resume existing session
+  --save-session <path>  Save session ID to file
 
-If you get "command not found" or similar errors:
+Prompt:
+  Provide as positional argument or pipe via stdin
+  Use @-mentions for files: @path, @"file.txt", @https://example.com/doc
 
-**Problem:** The agent binary is not in your PATH or the command in
-`settings.json` is incorrect.
+Examples:
+  dart example/acpcli/acpcli.dart -a gemini "Summarize README.md"
+  echo "List commands" | dart example/acpcli/acpcli.dart -o jsonl
+  dart example/acpcli/acpcli.dart "Review @lib/src/main.dart"
+```
 
-**Solution:**
-- Ensure the agent is installed and available in your PATH
-- Use absolute paths in `settings.json` if needed
-- Verify the command works by running it directly in your terminal
+### Key Features
 
-### Authentication required errors
-If you see a JSON‑RPC "authentication required" error from an agent, you’ll need
-to authenticate for that agent before sending prompts. For example, log out and
-log back in via the agent’s own CLI or UI, then retry. Ensure any required API
-keys or environment variables are set in your shell prior to launching the CLI.
+#### Agent Selection
+Select from configured agents or use the default:
+```bash
+# Use default (first in settings.json)
+dart example/acpcli/acpcli.dart "Hello"
 
-### Settings not found or invalid
-The CLI loads `settings.json` from the `example/` directory by default or from
-`--settings <path>`. If parsing fails, fix the JSON shape or point to a valid
-file. The `agent_servers` section must contain at least one entry with a
-`command` string; optional `args` is an array of strings and `env` is a map of
-string→string.
+# Select specific agent
+dart example/acpcli/acpcli.dart -a claude-code "Hello"
+```
 
-### Empty prompt
-Provide a prompt as trailing args or via stdin (`echo "Hi" | dart
-example/main.dart`).
+#### Output Modes
 
+| Mode | Flag | Description | Use Case |
+|------|------|-------------|----------|
+| text | `-o text` (default) | Human-readable with metadata | Interactive use |
+| simple | `-o simple` | Assistant text only | Clean output |
+| jsonl | `-o jsonl` | Raw protocol frames | Debugging/automation |
+| json | `-o json` | Alias for jsonl | Protocol analysis |
 
-### How to Test
+#### @-Mention Support
+Reference files and URLs directly in prompts:
+```bash
+# Local files
+dart example/acpcli/acpcli.dart "Review @src/main.dart"
+dart example/acpcli/acpcli.dart "Analyze @\"my file.txt\""
 
-This project uses the `test` package and contains a mix of unit and end-to-end
-(e2e) tests.
+# URLs
+dart example/acpcli/acpcli.dart "Summarize @https://example.com/api-docs"
 
-#### Unit Tests (Always Run)
-To run only the unit tests (recommended for quick testing):
+# Home directory
+dart example/acpcli/acpcli.dart "Read @~/Documents/notes.txt"
+```
 
+#### Permission Control
+Non-interactive permission handling via flags:
+```bash
+# Enable writes (confined to CWD)
+dart example/acpcli/acpcli.dart --write "Create a new file"
+
+# Read anywhere + write
+dart example/acpcli/acpcli.dart --yolo "Search system files"
+```
+
+#### Discovery Commands
+Explore agent capabilities without sending prompts:
+```bash
+# List capabilities
+dart example/acpcli/acpcli.dart -a claude-code --list-caps
+
+# List session modes
+dart example/acpcli/acpcli.dart -a claude-code --list-modes
+
+# List slash commands
+dart example/acpcli/acpcli.dart -a claude-code --list-commands
+
+# Combine multiple lists
+dart example/acpcli/acpcli.dart --list-caps --list-modes --list-commands
+```
+
+#### Session Management
+Save and resume sessions (if agent supports `loadSession`):
+```bash
+# Save session
+dart example/acpcli/acpcli.dart --save-session /tmp/session.txt "Initial prompt"
+
+# Resume later
+dart example/acpcli/acpcli.dart --resume $(cat /tmp/session.txt) "Continue"
+```
+
+#### Protocol Debugging
+Use JSONL mode to inspect raw ACP protocol:
+```bash
+# Mirror all JSON-RPC frames
+dart example/acpcli/acpcli.dart -o jsonl "Test" | jq '.'
+
+# Filter specific message types
+dart example/acpcli/acpcli.dart -o jsonl "Test" | grep tool_call
+```
+
+### Tool Monitoring
+
+In text mode, the CLI displays rich information about tool usage:
+```
+[tool] read Read file @ src/main.py
+[tool.in] {"path":"src/main.py","line":1,"limit":200}
+[tool.out] "import sys..."
+```
+
+### Plans and Progress
+
+Track agent execution plans:
+```bash
+dart example/acpcli/acpcli.dart "Create a plan to refactor the auth module"
+# [plan] {"title": "Refactoring", "steps": [...], "status": "in_progress"}
+```
+
+### Terminal Support
+
+When agents execute commands:
+```bash
+dart example/acpcli/acpcli.dart "Run: npm test"
+# [term] created id=term_001 cmd=npm
+# [term] output id=term_001
+# [term] exited id=term_001 code=0
+```
+
+---
+
+## acpcomply Compliance App
+
+The compliance runner executes a suite of ACP agent compliance tests and prints a Markdown report to stdout.
+
+- Entrypoint: `example/acpcomply/acpcomply.dart`
+- Tests: `example/acpcomply/compliance-tests/*.json`
+- Requirements/spec: `specs/acpcomply-requirements.md`
+
+### What It Verifies
+- Initialization and session setup
+- Prompt turns and cancellation semantics
+- Capability respect (FS/terminal disabled)
+- Error handling (unknown methods, invalid params)
+- File system and terminal flows
+- Plans, slash commands, and streaming chunks
+- Session modes and session load replay
+- Tool calls, diffs, locations, and permission flows
+- MCP stdio session setup (optional)
+
+### How It Works
+- Creates a per-test sandbox workspace and writes declared files
+- Reuses `AcpClient` for transport and Agent→Client handling
+- Matches server responses/notifications via regex subset matching
+- Observes Agent→Client requests (`fs/*`, `terminal/*`, `session/request_permission`)
+- Prints a Markdown table of PASS/FAIL/NA per agent and test
+
+### Run
+```bash
+dart run example/acpcomply/acpcomply.dart
+```
+
+Notes:
+- Some tests are optional and will be marked NA when agents lack the corresponding capability
+- The MCP stdio test forwards a local MCP server definition at `tool/mcp_server/bin/server.dart` to the agent
+
+---
+
+## Installing Agents
+
+### Gemini CLI
+```bash
+# Install from https://github.com/google-gemini/gemini-cli
+# Authenticate with: gemini auth login
+# Configure in settings.json with --experimental-acp flag
+```
+
+### Claude Code Adapter
+```bash
+# Option 1: Run via npx (recommended)
+npx @zed-industries/claude-code-acp
+
+# Option 2: Install globally
+npm i -g @zed-industries/claude-code-acp
+```
+
+---
+
+## Testing
+
+### Unit Tests
+Run fast unit tests without agents:
 ```bash
 dart test --exclude-tags e2e
 ```
 
-#### E2E Tests (Require Real Agents)
-The e2e tests require actual agents (Gemini, Claude Code) to be configured and
-available. These tests are tagged with 'e2e' and will timeout if the agents
-aren't running.
-
-To run all tests including e2e:
-
+### E2E Tests
+Run integration tests with real agents:
 ```bash
+# All tests including e2e
 dart test
-```
 
-To run only e2e tests:
-
-```bash
+# Only e2e tests
 dart test --tags e2e
+
+# Specific agent tests
+dart test --tags e2e -n "gemini"
+dart test --tags e2e -n "claude-code"
 ```
 
-The e2e tests use a test-specific settings file: `test/test_settings.json`. The
-tests pass this file to the CLI via `--settings` so they don’t depend on your
-default `example/settings.json`.
+Tests use `test/test_settings.json` for agent configuration.
 
-To run a specific test file:
+---
 
+## Troubleshooting
+
+### Gemini "Invalid argument" Errors
+Some Gemini models have ACP implementation bugs. Solution:
+- Don't set `GEMINI_MODEL` environment variable
+- Use the default model or test specific models first
+
+### Permission Denied
+Agents need explicit permissions for file operations:
+- Use `--write` for write operations
+- Use `--yolo` for unrestricted read + write
+
+### Authentication Required
+Authenticate with the agent's native tools first:
 ```bash
-dart test test/unit_capabilities_test.dart
+gemini auth login
+# or follow Claude Code OAuth flow
 ```
+
+### Settings Not Found
+Ensure `example/acpcli/settings.json` exists or use `--settings` to specify a path.
+
+---
+
+## License
+
+See LICENSE file for details.

@@ -1,0 +1,35 @@
+{
+  "title": "Agent advertises available commands",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/slash-commands"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 8000,
+        "messages": [
+          {
+            "notification": {
+              "jsonrpc": "2.0",
+              "method": "session/update",
+              "params": {
+                "update": {
+                  "sessionUpdate": "^available_commands_update$"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

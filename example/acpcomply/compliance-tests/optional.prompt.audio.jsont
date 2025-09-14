@@ -1,0 +1,59 @@
+{
+  "title": "Prompt includes an audio content block",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/content#audio-content"
+  ],
+  "preconditions": [
+    {
+      "agentCap": "promptCapabilities.audio",
+      "mustBe": true
+    }
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 30,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Transcribe this audio."
+            },
+            {
+              "type": "audio",
+              "mimeType": "audio/wav",
+              "data": "UklGRiQAAABXQVZF"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 10000,
+        "messages": [
+          {
+            "response": {
+              "id": 30,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

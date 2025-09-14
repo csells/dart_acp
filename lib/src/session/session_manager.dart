@@ -8,6 +8,7 @@ import '../models/terminal_events.dart';
 import '../models/tool_types.dart';
 import '../models/types.dart';
 import '../models/updates.dart';
+import '../providers/fs_provider.dart';
 import '../providers/permission_provider.dart';
 import '../providers/terminal_provider.dart';
 import '../rpc/peer.dart';
@@ -66,6 +67,8 @@ class SessionManager {
       StreamController<TerminalEvent>.broadcast();
   // Track tool calls by session and tool call ID for proper merging
   final Map<String, Map<String, ToolCall>> _toolCalls = {};
+  // Track workspace roots per session for filesystem operations
+  final Map<String, String> _sessionWorkspaceRoots = {};
 
   /// Dispose all internal resources and close streams.
   Future<void> dispose() async {
@@ -76,6 +79,7 @@ class SessionManager {
     _sessionStreams.clear();
     _replayBuffers.clear();
     _toolCalls.clear();
+    _sessionWorkspaceRoots.clear();
   }
 
   /// Send `initialize` with capabilities and return negotiated result.
@@ -106,14 +110,15 @@ class SessionManager {
   }
 
   /// Create a new session and return its id.
-  Future<String> newSession({String? cwd}) async {
+  Future<String> newSession({required String workspaceRoot}) async {
     final resp = await peer.newSession({
-      'cwd': cwd ?? config.workspaceRoot,
+      'cwd': workspaceRoot,
       'mcpServers': config.mcpServers,
     });
     final id = resp['sessionId'] as String;
     _sessionStreams.putIfAbsent(id, StreamController<AcpUpdate>.broadcast);
     _replayBuffers.putIfAbsent(id, () => <AcpUpdate>[]);
+    _sessionWorkspaceRoots[id] = workspaceRoot;
     // Capture any modes info from session/new
     final modes = resp['modes'];
     if (modes is Map<String, dynamic>) {
@@ -137,15 +142,19 @@ class SessionManager {
   }
 
   /// Load a previous session and replay updates to the client.
-  Future<void> loadSession({required String sessionId, String? cwd}) async {
+  Future<void> loadSession({
+    required String sessionId,
+    required String workspaceRoot,
+  }) async {
     _sessionStreams.putIfAbsent(
       sessionId,
       StreamController<AcpUpdate>.broadcast,
     );
     _replayBuffers.putIfAbsent(sessionId, () => <AcpUpdate>[]);
+    _sessionWorkspaceRoots[sessionId] = workspaceRoot;
     await peer.loadSession({
       'sessionId': sessionId,
-      'cwd': cwd ?? config.workspaceRoot,
+      'cwd': workspaceRoot,
       'mcpServers': config.mcpServers,
     });
   }
@@ -180,6 +189,10 @@ class SessionManager {
         _log.warning('prompt error: $e');
         // Surface error to listeners so UIs can react
         _sessionStreams[sessionId]!.addError(e, st);
+        // Send TurnEnded with 'other' stop reason to properly close the stream
+        const turnEnded = TurnEnded(StopReason.other);
+        _replayBuffers[sessionId]?.add(turnEnded);
+        _sessionStreams[sessionId]!.add(turnEnded);
       } finally {}
     }());
 
@@ -204,6 +217,17 @@ class SessionManager {
   Future<void> cancel({required String sessionId}) async {
     _cancellingSessions.add(sessionId);
     await peer.cancel({'sessionId': sessionId});
+  }
+
+  /// Get the workspace root for a session.
+  String getWorkspaceRoot(String sessionId) {
+    final root = _sessionWorkspaceRoots[sessionId];
+    if (root == null) {
+      throw StateError(
+        'Session $sessionId not found or workspace root not set',
+      );
+    }
+    return root;
   }
 
   /// Stream of terminal lifecycle events.
@@ -349,12 +373,29 @@ class SessionManager {
 
   // ===== Agent -> Client handlers =====
   Future<Json> _onReadTextFile(Json req) async {
+    if (config.fsProvider == null) {
+      throw Exception('File system operations not supported');
+    }
+    final sessionId = req['sessionId'] as String?;
+    final workspaceRoot = sessionId != null
+        ? _sessionWorkspaceRoots[sessionId]
+        : _sessionWorkspaceRoots.values.firstOrNull;
+    if (workspaceRoot == null) {
+      throw Exception('No workspace root available for filesystem operation');
+    }
+
+    // Create a session-specific provider
+    final provider = DefaultFsProvider(
+      workspaceRoot: workspaceRoot,
+      allowReadOutsideWorkspace: config.allowReadOutsideWorkspace,
+    );
+
     final path = req['path'] as String;
     final line = (req['line'] as num?)?.toInt();
     final limit = (req['limit'] as num?)?.toInt();
     _log.fine('fs/read_text_file <- path=$path line=$line limit=$limit');
     try {
-      final content = await config.fsProvider.readTextFile(
+      final content = await provider.readTextFile(
         path,
         line: line,
         limit: limit,
@@ -368,11 +409,28 @@ class SessionManager {
   }
 
   Future<Json?> _onWriteTextFile(Json req) async {
+    if (config.fsProvider == null) {
+      throw Exception('File system operations not supported');
+    }
+    final sessionId = req['sessionId'] as String?;
+    final workspaceRoot = sessionId != null
+        ? _sessionWorkspaceRoots[sessionId]
+        : _sessionWorkspaceRoots.values.firstOrNull;
+    if (workspaceRoot == null) {
+      throw Exception('No workspace root available for filesystem operation');
+    }
+
+    // Create a session-specific provider
+    final provider = DefaultFsProvider(
+      workspaceRoot: workspaceRoot,
+      allowReadOutsideWorkspace: config.allowReadOutsideWorkspace,
+    );
+
     final path = req['path'] as String;
     final content = req['content'] as String? ?? '';
     _log.fine('fs/write_text_file <- path=$path bytes=${content.length}');
     try {
-      await config.fsProvider.writeTextFile(path, content);
+      await provider.writeTextFile(path, content);
       _log.fine('fs/write_text_file -> ok path=$path');
       return null; // per schema null
     } catch (e) {

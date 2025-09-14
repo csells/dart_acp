@@ -36,16 +36,16 @@ class JsonRpcPeer {
     // The following methods are handled by higher-level wiring. We expose
     // registration points for them via onX setters.
     // Filesystem callbacks (Agent -> Client)
-    _peer.registerMethod('read_text_file', (rpc.Parameters params) async {
+    _peer.registerMethod('fs/read_text_file', (rpc.Parameters params) async {
       if (onReadTextFile == null) {
-        throw rpc.RpcException.methodNotFound('read_text_file');
+        throw rpc.RpcException.methodNotFound('fs/read_text_file');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
       return onReadTextFile!(json);
     });
-    _peer.registerMethod('write_text_file', (rpc.Parameters params) async {
+    _peer.registerMethod('fs/write_text_file', (rpc.Parameters params) async {
       if (onWriteTextFile == null) {
-        throw rpc.RpcException.methodNotFound('write_text_file');
+        throw rpc.RpcException.methodNotFound('fs/write_text_file');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
       return onWriteTextFile!(json);
@@ -60,40 +60,40 @@ class JsonRpcPeer {
       final json = Map<String, dynamic>.from(params.value as Map);
       return onRequestPermission!(json);
     });
-    // Terminal callbacks (UNSTABLE; Agent -> Client)
-    _peer.registerMethod('create_terminal', (rpc.Parameters params) async {
+    // Terminal callbacks (Agent -> Client)
+    _peer.registerMethod('terminal/create', (rpc.Parameters params) async {
       if (onTerminalCreate == null) {
-        throw rpc.RpcException.methodNotFound('create_terminal');
+        throw rpc.RpcException.methodNotFound('terminal/create');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
       return onTerminalCreate!(json);
     });
-    _peer.registerMethod('terminal_output', (rpc.Parameters params) async {
+    _peer.registerMethod('terminal/output', (rpc.Parameters params) async {
       if (onTerminalOutput == null) {
-        throw rpc.RpcException.methodNotFound('terminal_output');
+        throw rpc.RpcException.methodNotFound('terminal/output');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
       return onTerminalOutput!(json);
     });
-    _peer.registerMethod('wait_for_terminal_exit', (
+    _peer.registerMethod('terminal/wait_for_exit', (
       rpc.Parameters params,
     ) async {
       if (onTerminalWaitForExit == null) {
-        throw rpc.RpcException.methodNotFound('wait_for_terminal_exit');
+        throw rpc.RpcException.methodNotFound('terminal/wait_for_exit');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
       return onTerminalWaitForExit!(json);
     });
-    _peer.registerMethod('kill_terminal', (rpc.Parameters params) async {
+    _peer.registerMethod('terminal/kill', (rpc.Parameters params) async {
       if (onTerminalKill == null) {
-        throw rpc.RpcException.methodNotFound('kill_terminal');
+        throw rpc.RpcException.methodNotFound('terminal/kill');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
       return onTerminalKill!(json);
     });
-    _peer.registerMethod('release_terminal', (rpc.Parameters params) async {
+    _peer.registerMethod('terminal/release', (rpc.Parameters params) async {
       if (onTerminalRelease == null) {
-        throw rpc.RpcException.methodNotFound('release_terminal');
+        throw rpc.RpcException.methodNotFound('terminal/release');
       }
       final json = Map<String, dynamic>.from(params.value as Map);
       return onTerminalRelease!(json);
@@ -149,4 +149,8 @@ class JsonRpcPeer {
   /// (Extension) Send `session/set_mode` to change the session's mode.
   Future<void> setSessionMode(Json params) async =>
       _peer.sendRequest('session/set_mode', params);
+
+  /// Send an arbitrary JSON-RPC request by method name with params.
+  Future<Json> sendRaw(String method, Json params) async =>
+      Map<String, dynamic>.from(await _peer.sendRequest(method, params));
 }

@@ -8,6 +8,9 @@ import 'types.dart';
 sealed class AcpUpdate {
   /// Create an update instance.
   const AcpUpdate();
+
+  /// Get a text representation of this update.
+  String get text;
 }
 
 /// Update containing the agent's current execution plan.
@@ -21,6 +24,9 @@ class PlanUpdate extends AcpUpdate {
 
   /// The execution plan.
   final Plan plan;
+
+  @override
+  String get text => plan.title ?? 'Plan update';
 }
 
 /// Streaming message delta, for user/assistant content blocks.
@@ -50,6 +56,17 @@ class MessageDelta extends AcpUpdate {
 
   /// Whether this is a thought chunk (vs a message chunk).
   final bool isThought;
+
+  @override
+  String get text {
+    final buffer = StringBuffer();
+    for (final block in content) {
+      if (block is TextContent) {
+        buffer.write(block.text);
+      }
+    }
+    return buffer.toString();
+  }
 }
 
 /// Tool call creation/progress/completion update.
@@ -63,6 +80,10 @@ class ToolCallUpdate extends AcpUpdate {
 
   /// The tool call information.
   final ToolCall toolCall;
+
+  @override
+  String get text =>
+      '[Tool: ${toolCall.title ?? toolCall.toolCallId}] ${toolCall.status}';
 }
 
 /// File diff update with proposed changes.
@@ -76,6 +97,9 @@ class DiffUpdate extends AcpUpdate {
 
   /// The diff information.
   final Diff diff;
+
+  @override
+  String get text => '[Diff: ${diff.uri ?? diff.id}]';
 }
 
 /// Update containing currently available commands for the agent.
@@ -91,6 +115,13 @@ class AvailableCommandsUpdate extends AcpUpdate {
 
   /// Available commands.
   final List<AvailableCommand> commands;
+
+  @override
+  String get text {
+    if (commands.isEmpty) return '[Commands: none]';
+    final names = commands.map((c) => c.name).join(', ');
+    return '[Commands: $names]';
+  }
 }
 
 /// Terminal update indicating a prompt turn is complete.
@@ -100,6 +131,9 @@ class TurnEnded extends AcpUpdate {
 
   /// Reason for stopping the turn.
   final StopReason stopReason;
+
+  @override
+  String get text => '[Session ended: $stopReason]';
 }
 
 /// Update type used for unclassified session/update payloads.
@@ -109,6 +143,10 @@ class UnknownUpdate extends AcpUpdate {
 
   /// Raw session/update map.
   final Map<String, dynamic> raw;
+
+  @override
+  String get text =>
+      '[Unknown update: ${raw['sessionUpdate'] ?? 'unspecified'}]';
 }
 
 /// Mode update indicating current session mode changed (extension).
@@ -118,4 +156,7 @@ class ModeUpdate extends AcpUpdate {
 
   /// Current mode id selected by the agent.
   final String currentModeId;
+
+  @override
+  String get text => '[Mode: $currentModeId]';
 }

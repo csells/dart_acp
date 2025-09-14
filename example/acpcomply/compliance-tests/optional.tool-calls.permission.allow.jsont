@@ -1,0 +1,73 @@
+{
+  "title": "Respond to permission request with selected option",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/tool-calls#requesting-permission",
+    "https://agentclientprotocol.com/protocol/schema#requestpermissionrequest"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Perform a filesystem write that requires permission if your policy requires it."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 12000,
+        "messages": [
+          {
+            "clientRequest": {
+              "jsonrpc": "2.0",
+              "method": "session/request_permission",
+              "params": {
+                "sessionId": "^${sessionId}$"
+              }
+            },
+            "reply": {
+              "result": {
+                "outcome": {
+                  "outcome": "selected",
+                  "optionId": "allow-once"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 10000,
+        "messages": [
+          {
+            "response": {
+              "id": 20,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Initialize negotiation",
+  "severity": "required",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/initialization",
+    "https://agentclientprotocol.com/protocol/schema#initialize",
+    "https://agentclientprotocol.com/protocol/schema#initializeresponse"
+  ],
+  "sandbox": { "files": [] },
+  "steps": [
+    { "send": { "jsonrpc": "2.0", "method": "initialize", "params": { "protocolVersion": ${protocolVersionDefault}, "clientCapabilities": ${clientCapabilitiesDefault} } } },
+    {
+      "expect": {
+        "timeoutMs": 3000,
+        "messages": [
+          { "response": { "jsonrpc": "2.0", "result": { "protocolVersion": "^\\d+$", "agentCapabilities": {} } } }
+        ],
+        "captures": [ { "path": "result.protocolVersion", "var": "agentProtocolVersion" } ]
+      }
+    }
+  ]
+}

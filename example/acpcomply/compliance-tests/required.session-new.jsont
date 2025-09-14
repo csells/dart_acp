@@ -1,0 +1,34 @@
+{
+  "title": "Create a new session",
+  "severity": "required",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/session-setup#creating-a-session",
+    "https://agentclientprotocol.com/protocol/schema#newsessionrequest",
+    "https://agentclientprotocol.com/protocol/schema#newsessionresponse"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 1000,
+        "messages": [
+          {
+            "response": {
+              "id": "^.*$",
+              "result": {
+                "sessionId": "^.+$"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

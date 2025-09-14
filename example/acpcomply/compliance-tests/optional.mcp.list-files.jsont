@@ -1,0 +1,87 @@
+{
+  "title": "Call MCP tool 'list-files' on the sandbox directory",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/session-setup#mcp-servers"
+  ],
+  "sandbox": {
+    "files": [
+      {
+        "path": "foo.txt",
+        "text": "x"
+      },
+      {
+        "path": "bar/baz.txt",
+        "text": "y"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "newSession": {
+        "mcpServers": [
+          {
+            "name": "dart-mcp",
+            "command": "dart",
+            "args": [
+              "run",
+              "tool/mcp_server/bin/server.dart",
+              "--stdio"
+            ],
+            "env": []
+          }
+        ],
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 40,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Use the MCP tool 'list-files' to list entries under ${sandbox}."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 15000,
+        "messages": [
+          {
+            "notification": {
+              "jsonrpc": "2.0",
+              "method": "session/update",
+              "params": {
+                "update": {
+                  "sessionUpdate": "^tool_call(_update)?$"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 10000,
+        "messages": [
+          {
+            "response": {
+              "id": 40,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -124,7 +124,7 @@ class CliArgs {
       ..addOption('save-session', help: 'Save new sessionId to file');
 
     return '''
-Usage: dart example/main.dart [options] [--] [prompt]
+Usage: dart example/acpcli/acpcli.dart [options] [--] [prompt]
 
 ${parser.usage}
 
@@ -134,8 +134,8 @@ Prompt:
     @path, @"a file.txt", @https://example.com/file
 
 Examples:
-  dart example/main.dart -a my-agent "Summarize README.md"
-  echo "List available commands" | dart example/main.dart -o jsonl''';
+  dart example/acpcli/acpcli.dart -a my-agent "Summarize README.md"
+  echo "List available commands" | dart example/acpcli/acpcli.dart -o jsonl''';
   }
 
   final OutputMode output;

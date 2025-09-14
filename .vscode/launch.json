@@ -2,10 +2,17 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "dart_acp",
+      "name": "dart_acp (simple example)",
       "request": "launch",
       "type": "dart",
       "program": "example/main.dart"
+    },
+    {
+      "name": "dart_acp CLI",
+      "request": "launch",
+      "type": "dart",
+      "program": "example/acpcli/acpcli.dart",
+      "args": ["Summarize README.md"]
     }
   ]
 }

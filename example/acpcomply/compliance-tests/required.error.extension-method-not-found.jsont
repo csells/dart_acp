@@ -1,0 +1,40 @@
+{
+  "title": "Unknown extension method → -32601",
+  "severity": "required",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/extensibility"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 23,
+        "method": "_acp.test/unknown",
+        "params": {}
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 2000,
+        "messages": [
+          {
+            "response": {
+              "id": 23,
+              "error": {
+                "code": "^-32601$"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

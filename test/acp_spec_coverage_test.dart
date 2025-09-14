@@ -164,18 +164,11 @@ void main() {
 
     group('Session Flow', () {
       test('session lifecycle methods exist', () {
-        final config = AcpConfig(workspaceRoot: '/test', agentCommand: 'test');
+        // Check that the AcpClient factory constructor exists
+        expect(AcpClient.start, isA<Function>());
 
-        final client = AcpClient(config: config);
-
-        // Verify required methods exist
-        expect(client.initialize, isA<Function>());
-        expect(client.newSession, isA<Function>());
-        expect(client.loadSession, isA<Function>());
-        expect(client.prompt, isA<Function>());
-        expect(client.sessionUpdates, isA<Function>());
-        expect(client.cancel, isA<Function>());
-        expect(client.dispose, isA<Function>());
+        // The actual instance methods are tested in e2e tests
+        // since we need a running client to test them properly
       });
     });
 
@@ -217,7 +210,7 @@ void main() {
           ToolCall(
             toolCallId: 'tool-1',
             status: ToolCallStatus.pending,
-            title: 'read_file',
+            title: 'read-file',
             kind: ToolKind.read,
           ),
         );
@@ -290,7 +283,6 @@ void main() {
     group('Configuration', () {
       test('AcpConfig supports all required fields', () {
         final config = AcpConfig(
-          workspaceRoot: '/test/workspace',
           agentCommand: 'test-agent',
           agentArgs: ['--arg1', '--arg2'],
           envOverrides: {'KEY': 'value'},
@@ -305,7 +297,6 @@ void main() {
           onProtocolOut: (msg) {},
         );
 
-        expect(config.workspaceRoot, equals('/test/workspace'));
         expect(config.agentCommand, equals('test-agent'));
         expect(config.agentArgs, equals(['--arg1', '--arg2']));
         expect(config.envOverrides, equals({'KEY': 'value'}));
@@ -314,7 +305,7 @@ void main() {
       });
 
       test('AcpConfig has sensible defaults', () {
-        final config = AcpConfig(workspaceRoot: '/test', agentCommand: 'agent');
+        final config = AcpConfig(agentCommand: 'agent');
 
         expect(config.agentArgs, isEmpty);
         expect(config.envOverrides, isEmpty);

@@ -1,11 +1,5 @@
 {
   "agent_servers": {
-    "echo": {
-      "command": "dart",
-      "args": [
-        "test/agents/echo_agent.dart"
-      ]
-    },
     "claude-code": {
       "command": "npx",
       "args": [
@@ -20,10 +14,7 @@
       "command": "gemini",
       "args": [
         "--experimental-acp"
-      ],
-      "env": {
-        "GEMINI_MODEL": "gemini-2.5-flash"
-      }
+      ]
     }
   }
 }

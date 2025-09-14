@@ -52,7 +52,7 @@ void main() {
       'claude-code: list caps (jsonl)',
       () async {
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -94,7 +94,7 @@ void main() {
         File('${dir.path}/test.txt').writeAsStringSync('Test content');
 
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -124,7 +124,7 @@ void main() {
       () async {
         // Test that all three list flags can be combined and output markdown
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -187,7 +187,7 @@ void main() {
       () async {
         // Test JSONL output with all three list flags
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -266,7 +266,7 @@ void main() {
       () async {
         // Test that individual flag still works with markdown format
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -322,7 +322,7 @@ void main() {
         }
 
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -355,7 +355,7 @@ void main() {
       'list modes: emits client/modes (jsonl)',
       () async {
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -389,7 +389,7 @@ void main() {
       'set mode fails when unavailable',
       () async {
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -422,7 +422,7 @@ void main() {
           return;
         }
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -457,7 +457,7 @@ void main() {
         }
 
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -514,7 +514,7 @@ void main() {
         }
 
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -558,7 +558,7 @@ void main() {
     );
     test('gemini: list caps (jsonl)', () async {
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -589,7 +589,7 @@ void main() {
       'claude-code: list caps (json alias to jsonl)',
       () async {
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -620,7 +620,7 @@ void main() {
 
     test('echo: stacking --list-xxx flags with markdown output', () async {
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -655,7 +655,7 @@ void main() {
 
     test('echo: --list-xxx flags with prompt continues to process', () async {
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -694,7 +694,7 @@ void main() {
       File(path.join(dir.path, 'test.txt')).writeAsStringSync('Hello');
 
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -724,7 +724,7 @@ void main() {
       addTearDown(() => dir.delete(recursive: true));
 
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -758,7 +758,7 @@ void main() {
       File(path.join(dir.path, 'test.txt')).writeAsStringSync('Hello');
 
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -789,7 +789,7 @@ void main() {
       addTearDown(() => dir.delete(recursive: true));
 
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -821,7 +821,7 @@ void main() {
 
     test('echo: --list-xxx flags in JSONL mode', () async {
       final proc = await Process.start('dart', [
-        path.join(Directory.current.path, 'example', 'main.dart'),
+        path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
         '--settings',
         settingsPath,
         '-a',
@@ -871,7 +871,7 @@ void main() {
       'gemini: list commands (jsonl) — emits empty available_commands_update',
       () async {
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',
@@ -909,7 +909,7 @@ void main() {
       'gemini: list commands (text mode)',
       () async {
         final proc = await Process.start('dart', [
-          path.join(Directory.current.path, 'example', 'main.dart'),
+          path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart'),
           '--settings',
           settingsPath,
           '-a',

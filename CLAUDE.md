@@ -44,24 +44,24 @@ dart format --set-exit-if-changed .
 ### Running the Example CLI
 ```bash
 # Basic usage with default agent
-dart example/main.dart "Your prompt here"
+dart example/acpcli/acpcli.dart "Your prompt here"
 
 # Use a specific agent from settings.json
-dart example/main.dart -a gemini "Summarize README.md"
-dart example/main.dart -a claude-code "Analyze code"
+dart example/acpcli/acpcli.dart -a gemini "Summarize README.md"
+dart example/acpcli/acpcli.dart -a claude-code "Analyze code"
 
 # Different output modes
-dart example/main.dart -o jsonl "Your prompt"  # JSONL output
-dart example/main.dart -o simple "Your prompt"  # Simple text only
+dart example/acpcli/acpcli.dart -o jsonl "Your prompt"  # JSONL output
+dart example/acpcli/acpcli.dart -o simple "Your prompt"  # Simple text only
 
 # With permissions
-dart example/main.dart --write "Create a file"  # Enable write
-dart example/main.dart --yolo "Search system"   # Read everywhere + write
+dart example/acpcli/acpcli.dart --write "Create a file"  # Enable write
+dart example/acpcli/acpcli.dart --yolo "Search system"   # Read everywhere + write
 
 # List agent capabilities
-dart example/main.dart -a claude-code --list-caps
-dart example/main.dart -a claude-code --list-modes
-dart example/main.dart -a claude-code --list-commands
+dart example/acpcli/acpcli.dart -a claude-code --list-caps
+dart example/acpcli/acpcli.dart -a claude-code --list-modes
+dart example/acpcli/acpcli.dart -a claude-code --list-commands
 ```
 
 ## Architecture Overview
@@ -109,7 +109,7 @@ The SessionManager properly handles tool call updates by:
 3. Using `ToolCall.merge()` to only update non-null fields, preserving existing metadata
 
 #### CLI Test Path Handling
-CLI tests use consistent absolute paths via `path.join(Directory.current.path, 'example', 'main.dart')` for subprocess spawning.
+CLI tests use consistent absolute paths via `path.join(Directory.current.path, 'example', 'acpcli', 'acpcli.dart')` for subprocess spawning.
 
 ### Agent Configuration
 

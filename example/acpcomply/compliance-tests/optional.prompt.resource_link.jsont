@@ -1,0 +1,58 @@
+{
+  "title": "Prompt includes resource_link to a file",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/content#resource-link"
+  ],
+  "sandbox": {
+    "files": [
+      {
+        "path": "note.txt",
+        "text": "resource note"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 13,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Consider the attached file."
+            },
+            {
+              "type": "resource_link",
+              "uri": "file://${sandbox}/note.txt",
+              "name": "note.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 10000,
+        "messages": [
+          {
+            "response": {
+              "id": 13,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

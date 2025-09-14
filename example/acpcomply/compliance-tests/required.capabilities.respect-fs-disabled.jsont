@@ -1,0 +1,56 @@
+{
+  "title": "Agent must not call fs/* when capability is false",
+  "severity": "required",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/initialization#client-capabilities"
+  ],
+  "init": {
+    "clientCapabilities": {
+      "fs": {
+        "readTextFile": false,
+        "writeTextFile": false
+      },
+      "terminal": true
+    }
+  },
+  "sandbox": {
+    "files": [
+      {
+        "path": "greeting.txt",
+        "text": "hello"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Read greeting.txt and tell me its contents."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "forbid": {
+        "timeoutMs": 5000,
+        "methods": [
+          "fs/read_text_file",
+          "fs/write_text_file"
+        ]
+      }
+    }
+  ]
+}

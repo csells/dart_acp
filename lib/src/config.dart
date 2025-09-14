@@ -23,11 +23,10 @@ class AcpTimeouts {
   final Duration? permission;
 }
 
-/// Client configuration describing workspace, transport, providers, and caps.
+/// Client configuration describing transport, providers, and capabilities.
 class AcpConfig {
   /// Construct a configuration; call sites provide agent command/args/env.
   AcpConfig({
-    required this.workspaceRoot,
     this.agentCommand,
     this.agentArgs = const [],
     this.envOverrides = const {},
@@ -36,27 +35,18 @@ class AcpConfig {
     this.allowReadOutsideWorkspace = false,
     this.timeouts = const AcpTimeouts(),
     Logger? logger,
-    FsProvider? fsProvider,
+    this.fsProvider,
     PermissionProvider? permissionProvider,
     this.terminalProvider,
     this.onProtocolOut,
     this.onProtocolIn,
   }) : logger = logger ?? Logger('dart_acp'),
-       fsProvider =
-           fsProvider ??
-           DefaultFsProvider(
-             workspaceRoot: workspaceRoot,
-             allowReadOutsideWorkspace: allowReadOutsideWorkspace,
-           ),
        permissionProvider =
            permissionProvider ?? const DefaultPermissionProvider();
 
   /// Manually maintained minimum protocol version required by this client.
   /// Bump this constant only when you add support for a future breaking spec.
   static const int minimumProtocolVersion = 1;
-
-  /// Absolute path to the workspace root used for FS jail and session cwd.
-  final String workspaceRoot;
 
   /// Agent executable name/path (for stdio transport).
   final String? agentCommand;
@@ -89,7 +79,7 @@ class AcpConfig {
   final void Function(String line)? onProtocolIn;
 
   /// File system provider used to fulfill fs/* requests.
-  final FsProvider fsProvider;
+  final FsProvider? fsProvider;
 
   /// Permission provider used to answer session/request_permission.
   final PermissionProvider permissionProvider;

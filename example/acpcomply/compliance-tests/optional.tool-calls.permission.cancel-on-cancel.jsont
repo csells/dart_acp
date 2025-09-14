@@ -1,0 +1,81 @@
+{
+  "title": "Cancel outstanding permission on session/cancel",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/prompt-turn#cancellation",
+    "https://agentclientprotocol.com/protocol/tool-calls#requesting-permission"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 21,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Attempt an action that may require permission."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 6000,
+        "messages": [
+          {
+            "clientRequest": {
+              "jsonrpc": "2.0",
+              "method": "session/request_permission",
+              "params": {
+                "sessionId": "^${sessionId}$"
+              }
+            },
+            "reply": {
+              "result": {
+                "outcome": {
+                  "outcome": "cancelled"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "method": "session/cancel",
+        "params": {
+          "sessionId": "${sessionId}"
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 8000,
+        "messages": [
+          {
+            "response": {
+              "id": 21,
+              "result": {
+                "stopReason": "^cancelled$"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:io';
+
 import 'package:stream_channel/stream_channel.dart';
 
 /// Wraps a process's stdio as a line-delimited JSON StreamChannel.
@@ -15,14 +17,31 @@ class LineJsonChannel {
     _stdoutSub = process.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
-        .listen((line) {
-          if (line.trim().isEmpty) return;
-          onInboundLine?.call(line);
-          _controller.local.sink.add(line);
-        });
+        .listen(
+          (line) {
+            if (line.trim().isEmpty) return;
+            onInboundLine?.call(line);
+            _controller.local.sink.add(line);
+          },
+          onError: (e) {
+            // Log but don't crash on stdout errors
+            dev.log('[LineJsonChannel] stdout error: $e');
+          },
+        );
+    // Always drain stderr to prevent subprocess blocking, even if no callback
     _stderrSub = process.stderr
         .transform(utf8.decoder)
-        .listen((line) => onStderr?.call(line));
+        .transform(const LineSplitter())
+        .listen(
+          (line) {
+            // Always consume the data to prevent blocking
+            onStderr?.call(line);
+          },
+          onError: (e) {
+            // Log but don't crash on stderr errors
+            dev.log('[LineJsonChannel] stderr error: $e');
+          },
+        );
 
     _controller.local.stream.listen((out) {
       // Each outgoing payload is one JSON-RPC message; append newline

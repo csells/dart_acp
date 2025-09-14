@@ -7,7 +7,7 @@ This document describes the testing strategy, structure, and conventions for thi
 We test two primary surfaces:
 
 - AcpClient library (transport, session lifecycle, routing, security providers)
-- Example CLI app (example/main.dart)
+- Example CLI app (example/acpcli/acpcli.dart)
 
 For each surface we keep both unit and end‑to‑end (E2E) coverage:
 
@@ -57,7 +57,7 @@ E2E tests run against real ACP adapters/configurations defined in `test/test_set
 
 ### CLI app (E2E)
 - File: `test/cli_app_e2e_test.dart`
-- Spawns the CLI via `Process.start('dart', ['example/main.dart', '--settings', <test_settings.json>, ...])`
+- Spawns the CLI via `Process.start('dart', ['example/acpcli/acpcli.dart', '--settings', <test_settings.json>, ...])`
 - Exercises:
   - `--list-caps` (jsonl/json)
   - `--list-commands` (jsonl/text)
@@ -154,5 +154,5 @@ Ensure adapters referenced in `test/test_settings.json` are installed and access
 
 ## Notes on the Example CLI
 
-- Argument parsing lives in `example/args.dart`; `example/main.dart` consumes `CliArgs` and fails loud (no special exception handling) to surface errors directly.
+- Argument parsing lives in `example/acpcli/args.dart`; `example/acpcli/acpcli.dart` consumes `CliArgs` and fails loud (no special exception handling) to surface errors directly.
 - Troubleshooting guidance for common errors (auth required, invalid settings, empty prompt) is documented in `README.md`.

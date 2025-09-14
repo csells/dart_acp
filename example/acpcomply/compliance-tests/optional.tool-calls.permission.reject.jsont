@@ -1,0 +1,85 @@
+{
+  "title": "Reject a permission request and ensure no follow-on writes",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/tool-calls#requesting-permission"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "init": {
+    "permissionPolicy": {
+      "default": "ask"
+    }
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 25,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Attempt to create a file that should require permission."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 10000,
+        "messages": [
+          {
+            "clientRequest": {
+              "jsonrpc": "2.0",
+              "method": "session/request_permission",
+              "params": {
+                "sessionId": "^${sessionId}$"
+              }
+            },
+            "reply": {
+              "result": {
+                "outcome": {
+                  "outcome": "selected",
+                  "optionId": "reject-once"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "forbid": {
+        "timeoutMs": 6000,
+        "methods": [
+          "fs/write_text_file"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 8000,
+        "messages": [
+          {
+            "response": {
+              "id": 25,
+              "result": {
+                "stopReason": ".+"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

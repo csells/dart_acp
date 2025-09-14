@@ -10,20 +10,15 @@ void main() {
   group('AcpConfig', () {
     test('creates with required fields', () {
       final config = AcpConfig(
-        workspaceRoot: '/test/workspace',
         agentCommand: 'test-agent',
         agentArgs: const ['--test'],
       );
-      expect(config.workspaceRoot, '/test/workspace');
       expect(config.agentCommand, 'test-agent');
       expect(config.agentArgs, ['--test']);
     });
 
     test('has default capabilities', () {
-      final config = AcpConfig(
-        workspaceRoot: '/test/workspace',
-        agentCommand: 'test-agent',
-      );
+      final config = AcpConfig(agentCommand: 'test-agent');
       expect(config.capabilities, isNotNull);
       expect(config.capabilities.fs.readTextFile, isTrue);
       // Default is false for write to be safe

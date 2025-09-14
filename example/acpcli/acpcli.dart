@@ -65,63 +65,62 @@ Future<void> main(List<String> argv) async {
       )
       .toList();
 
-  final client = AcpClient(
-    config: AcpConfig(
-      workspaceRoot: Directory.current.path,
-      agentCommand: agent.command,
-      agentArgs: agent.args,
-      envOverrides: agent.env,
-      capabilities: AcpCapabilities(
-        fs: FsCapabilities(
-          readTextFile: true,
-          writeTextFile: args.write || args.yolo,
-        ),
+  final config = AcpConfig(
+    agentCommand: agent.command,
+    agentArgs: agent.args,
+    envOverrides: agent.env,
+    capabilities: AcpCapabilities(
+      fs: FsCapabilities(
+        readTextFile: true,
+        writeTextFile: args.write || args.yolo,
       ),
-      mcpServers: mcpServers,
-      allowReadOutsideWorkspace: args.yolo,
-      permissionProvider: DefaultPermissionProvider(
-        onRequest: (opts) async {
-          // Non-interactive: decide based on CLI flags
-          // --yolo or --write enables write operations
-          final allowWrites = args.write || args.yolo;
-
-          // Check if this is a write operation
-          final isWriteOp =
-              opts.toolKind?.toLowerCase().contains('write') ?? false;
-
-          // Auto-decide based on flags
-          final decision = (!isWriteOp || allowWrites)
-              ? PermissionOutcome.allow
-              : PermissionOutcome.deny;
-
-          // Log the decision in text mode (not in JSONL mode)
-          if (!args.output.isJsonLike) {
-            final action = decision == PermissionOutcome.allow
-                ? 'allow'
-                : 'deny';
-            stdout.writeln(
-              '[permission] auto-$action ${opts.toolName}'
-              '${opts.toolKind != null ? ' (${opts.toolKind})' : ''}',
-            );
-            if (decision == PermissionOutcome.deny && isWriteOp) {
-              stdout.writeln(
-                '[permission] Use --write or --yolo to enable writes',
-              );
-            }
-          }
-
-          return decision;
-        },
-      ),
-      onProtocolOut: args.output.isJsonLike
-          ? (line) => stdout.writeln(line)
-          : null,
-      onProtocolIn: args.output.isJsonLike
-          ? (line) => stdout.writeln(line)
-          : null,
-      terminalProvider: DefaultTerminalProvider(),
     ),
+    mcpServers: mcpServers,
+    allowReadOutsideWorkspace: args.yolo,
+    // Enable filesystem provider to support file operations
+    fsProvider: const _DummyFsProvider(),
+    permissionProvider: DefaultPermissionProvider(
+      onRequest: (opts) async {
+        // Non-interactive: decide based on CLI flags
+        // --yolo or --write enables write operations
+        final allowWrites = args.write || args.yolo;
+
+        // Check if this is a write operation
+        final isWriteOp =
+            opts.toolKind?.toLowerCase().contains('write') ?? false;
+
+        // Auto-decide based on flags
+        final decision = (!isWriteOp || allowWrites)
+            ? PermissionOutcome.allow
+            : PermissionOutcome.deny;
+
+        // Log the decision in text mode (not in JSONL mode)
+        if (!args.output.isJsonLike) {
+          final action = decision == PermissionOutcome.allow ? 'allow' : 'deny';
+          stdout.writeln(
+            '[permission] auto-$action ${opts.toolName}'
+            '${opts.toolKind != null ? ' (${opts.toolKind})' : ''}',
+          );
+          if (decision == PermissionOutcome.deny && isWriteOp) {
+            stdout.writeln(
+              '[permission] Use --write or --yolo to enable writes',
+            );
+          }
+        }
+
+        return decision;
+      },
+    ),
+    onProtocolOut: args.output.isJsonLike
+        ? (line) => stdout.writeln(line)
+        : null,
+    onProtocolIn: args.output.isJsonLike
+        ? (line) => stdout.writeln(line)
+        : null,
+    terminalProvider: DefaultTerminalProvider(),
   );
+
+  final client = await AcpClient.start(config: config);
 
   // Prepare prompt and check if we're in list-only mode.
   final prompt = await _readPrompt(args);
@@ -149,7 +148,6 @@ Future<void> main(List<String> argv) async {
     exit(130);
   });
 
-  await client.start();
   final init = await client.initialize();
 
   // Handle list flags first if present
@@ -186,9 +184,12 @@ Future<void> main(List<String> argv) async {
       exit(2);
     }
     _sessionId = args.resumeSessionId;
-    await client.loadSession(sessionId: _sessionId!);
+    await client.loadSession(
+      sessionId: _sessionId!,
+      workspaceRoot: Directory.current.path,
+    );
   } else {
-    _sessionId = await client.newSession();
+    _sessionId = await client.newSession(Directory.current.path);
     if (args.saveSessionPath != null) {
       await File(args.saveSessionPath!).writeAsString(_sessionId!);
     }
@@ -265,3 +266,20 @@ Future<String?> _readPrompt(CliArgs args) async {
 }
 
 String? _sessionId;
+
+/// Dummy filesystem provider - actual operations handled by SessionManager.
+class _DummyFsProvider implements FsProvider {
+  const _DummyFsProvider();
+
+  @override
+  Future<String> readTextFile(String path, {int? line, int? limit}) async {
+    // This is never called - SessionManager creates its own provider
+    throw UnimplementedError('Should not be called');
+  }
+
+  @override
+  Future<void> writeTextFile(String path, String content) async {
+    // This is never called - SessionManager creates its own provider
+    throw UnimplementedError('Should not be called');
+  }
+}

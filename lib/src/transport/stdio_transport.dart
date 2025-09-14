@@ -9,13 +9,13 @@ import '../transport/transport.dart';
 
 /// Stdio-based transport that spawns the agent process.
 class StdioTransport implements AcpTransport {
-  /// Create a stdio transport with working directory and logger.
+  /// Create a stdio transport with logger.
   StdioTransport({
-    required this.cwd,
     required this.logger,
     this.command,
     this.args = const [],
     this.envOverrides = const {},
+    this.cwd,
     this.onProtocolOut,
     this.onProtocolIn,
   });
@@ -26,8 +26,8 @@ class StdioTransport implements AcpTransport {
   /// Arguments passed to the agent.
   final List<String> args;
 
-  /// Working directory for the agent process.
-  final String cwd;
+  /// Optional working directory for the agent process.
+  final String? cwd;
 
   /// Environment variable overlay for the agent process.
   final Map<String, String> envOverrides;

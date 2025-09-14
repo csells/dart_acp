@@ -1,0 +1,54 @@
+{
+  "title": "Agent writes a file via fs/write_text_file",
+  "severity": "optional",
+  "docs": [
+    "https://agentclientprotocol.com/protocol/file-system#writing-files",
+    "https://agentclientprotocol.com/protocol/schema#writetextfilerequest"
+  ],
+  "sandbox": {
+    "files": []
+  },
+  "steps": [
+    {
+      "newSession": {
+        "capture": "sessionId"
+      }
+    },
+    {
+      "send": {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "${sessionId}",
+          "prompt": [
+            {
+              "type": "text",
+              "text": "Create a file named output.txt with text 'done'."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "timeoutMs": 6000,
+        "messages": [
+          {
+            "clientRequest": {
+              "jsonrpc": "2.0",
+              "method": "fs/write_text_file",
+              "params": {
+                "path": ".*output.txt$",
+                "content": ".*done.*"
+              }
+            },
+            "reply": {
+              "result": {}
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
