@@ -1,5 +1,6 @@
 {
   "title": "Prompt includes resource_link to a file",
+  "description": "Agent consumes resource_link content blocks referencing files or URLs included in the prompt.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/content#resource-link"
@@ -45,7 +46,6 @@
         "messages": [
           {
             "response": {
-              "id": 13,
               "result": {
                 "stopReason": ".+"
               }

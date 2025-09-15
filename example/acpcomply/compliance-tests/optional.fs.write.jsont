@@ -1,5 +1,6 @@
 {
   "title": "Agent writes a file via fs/write_text_file",
+  "description": "Ensure the agent writes a file via fs/write_text_file within the sandbox workspace.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/file-system#writing-files",

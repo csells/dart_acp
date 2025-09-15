@@ -1,5 +1,6 @@
 {
   "title": "Create a new session",
+  "description": "Client creates a new session; agent returns a sessionId.",
   "severity": "required",
   "docs": [
     "https://agentclientprotocol.com/protocol/session-setup#creating-a-session",

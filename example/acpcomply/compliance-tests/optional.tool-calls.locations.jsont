@@ -1,5 +1,6 @@
 {
   "title": "Agent includes locations in tool call updates",
+  "description": "Agent includes locations in tool calls or updates that point to relevant files/URIs.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/tool-calls#following-the-agent"
@@ -63,7 +64,7 @@
         "messages": [
           {
             "response": {
-              "id": 31,
+              
               "result": {
                 "stopReason": ".+"
               }

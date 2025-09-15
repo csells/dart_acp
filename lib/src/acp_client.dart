@@ -147,4 +147,10 @@ class AcpClient {
     String method,
     Map<String, dynamic> params,
   ) async => _peer.sendRaw(method, params);
+
+  /// Send a JSON-RPC notification (no response expected).
+  Future<void> sendNotificationRaw(
+    String method,
+    Map<String, dynamic> params,
+  ) async => _peer.sendNotificationRaw(method, params);
 }

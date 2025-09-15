@@ -153,4 +153,8 @@ class JsonRpcPeer {
   /// Send an arbitrary JSON-RPC request by method name with params.
   Future<Json> sendRaw(String method, Json params) async =>
       Map<String, dynamic>.from(await _peer.sendRequest(method, params));
+
+  /// Send an arbitrary JSON-RPC notification by method name with params.
+  Future<void> sendNotificationRaw(String method, Json params) async =>
+      _peer.sendNotification(method, params);
 }

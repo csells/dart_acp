@@ -1,5 +1,6 @@
 {
   "title": "Agent reports diff content in tool_call updates",
+  "description": "Agent proposes file edits by emitting diff content within tool_call or tool_call_update notifications.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/tool-calls#content"
@@ -65,7 +66,6 @@
         "messages": [
           {
             "response": {
-              "id": 24,
               "result": {
                 "stopReason": ".+"
               }

@@ -1,5 +1,6 @@
 {
   "title": "Invalid params should return -32602",
+  "description": "Schema-violating or malformed parameters must return JSON-RPC error code -32602 (Invalid Params).",
   "severity": "required",
   "docs": [
     "https://www.jsonrpc.org/specification#error_object"

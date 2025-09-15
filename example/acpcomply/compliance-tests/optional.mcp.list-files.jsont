@@ -1,5 +1,6 @@
 {
   "title": "Call MCP tool 'list-files' on the sandbox directory",
+  "description": "Agent connects to the provided MCP server over stdio and invokes the list-files tool to enumerate sandbox files.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/session-setup#mcp-servers"
@@ -74,7 +75,7 @@
         "messages": [
           {
             "response": {
-              "id": 40,
+              
               "result": {
                 "stopReason": ".+"
               }

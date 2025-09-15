@@ -1,5 +1,6 @@
 {
   "title": "Agent uses terminal APIs when asked to run a shell command",
+  "description": "Agent creates a terminal, runs a command, waits for exit, and reads output.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/terminals"
@@ -69,7 +70,7 @@
         "messages": [
           {
             "response": {
-              "id": 12,
+              
               "result": {
                 "stopReason": "^(end_turn|max_tokens|max_turn_requests|refusal)$"
               }

@@ -1,5 +1,6 @@
 {
   "title": "Initialize negotiation",
+  "description": "Negotiate protocol version and retrieve agentCapabilities from initialize.",
   "severity": "required",
   "docs": [
     "https://agentclientprotocol.com/protocol/initialization",

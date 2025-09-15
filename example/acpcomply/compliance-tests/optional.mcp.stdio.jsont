@@ -1,5 +1,6 @@
 {
   "title": "Connect to local stdio MCP server",
+  "description": "Agent connects to a local MCP server using stdio transport and successfully invokes a tool.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/session-setup#mcp-servers",
@@ -48,7 +49,7 @@
         "messages": [
           {
             "response": {
-              "id": 17,
+              
               "result": {
                 "stopReason": ".+"
               }

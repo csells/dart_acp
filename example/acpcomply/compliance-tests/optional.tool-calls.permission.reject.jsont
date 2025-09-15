@@ -1,5 +1,6 @@
 {
   "title": "Reject a permission request and ensure no follow-on writes",
+  "description": "Agent requests permission; client denies via a reject option; agent must not perform the write.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/tool-calls#requesting-permission"
@@ -8,9 +9,7 @@
     "files": []
   },
   "init": {
-    "permissionPolicy": {
-      "default": "ask"
-    }
+    "permissionPolicy": "read"
   },
   "steps": [
     {
@@ -45,15 +44,7 @@
               "params": {
                 "sessionId": "^${sessionId}$"
               }
-            },
-            "reply": {
-              "result": {
-                "outcome": {
-                  "outcome": "selected",
-                  "optionId": "reject-once"
-                }
-              }
-            }
+          }
           }
         ]
       }
@@ -72,7 +63,7 @@
         "messages": [
           {
             "response": {
-              "id": 25,
+              
               "result": {
                 "stopReason": ".+"
               }

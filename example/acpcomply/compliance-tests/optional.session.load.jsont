@@ -1,5 +1,6 @@
 {
   "title": "Load session and observe replay",
+  "description": "Agent replays the full conversation via session/update after session/load, then returns a response.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/session-setup#loading-sessions",
@@ -42,7 +43,7 @@
         "messages": [
           {
             "response": {
-              "id": 18,
+              
               "result": {
                 "stopReason": ".+"
               }
@@ -81,7 +82,7 @@
           },
           {
             "response": {
-              "id": 19,
+              
               "result": {}
             }
           }

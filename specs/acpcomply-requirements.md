@@ -2,14 +2,18 @@
 
 This document defines the test model, JSON test schema, and a comprehensive test suite to verify an ACP Agent’s compliance using the existing `AcpClient` library. The compliance runner reads tests, builds a sandbox per test, drives an agent via JSON‑RPC (over stdio, NDJSON framing as used by `AcpClient`), and validates server messages with regex-based matchers.
 
-The runner prints a Markdown report to stdout with a compliance table (rows = compliance areas, columns = agents) and per‑agent summaries with links to the relevant protocol docs.
+Design constraints:
+- No hardcoded test specifics in the runner. Adding new `.jsont` test files must not require runner code changes.
+- The runner is method‑agnostic. It does not special‑case protocol methods; it generically sends requests and notifications defined by each test.
+- Tests contain their own metadata (title, description, docs). The runner must not derive or hardcode descriptions.
+- The schema is forward‑extensible; fields outside what the runner uses must be ignored safely.
 
 ## Goals
 
 - Reuse `AcpClient` for transport, lifecycle, and hooks (FS, Permissions, Terminals).
 - Keep the harness simple: JSON template tests (.jsont) + sandbox files + regex expectations.
 - Cover the full ACP agent functionality: initialization, session, prompt turns, updates, tools, FS, terminals, modes, plans, slash commands, error handling, and MCP.
-- Deterministic, secure: each test runs in a temporary sandbox workspace; allowlist behavior for permission defaults; MCP server spawned only for MCP tests.
+- Deterministic, secure: each test runs in a temporary sandbox workspace; permission policy is test‑configurable; MCP server spawned only for MCP tests.
 
 ## Compliance Areas (mapped to tests)
 
@@ -37,10 +41,10 @@ The runner prints a Markdown report to stdout with a compliance table (rows = co
   1) Creates a per-test sandbox workspace and writes declared files.
   2) Reads the .jsont file as a string and interpolates template variables (e.g., `${protocolVersionDefault}`).
   3) Parses the interpolated string as JSON.
-  4) Runs `initialize` once per agent (outside tests), captures `agentCapabilities`.
+  4) Runs `initialize` once per agent (outside tests), captures `agentCapabilities` and other metadata (modes, commands) for the header.
   5) Executes test steps sequentially, using the sandbox as the session workspace (via `session/new`).
   6) Validates expectations against server messages (responses/notifications) and Agent→Client requests.
-  7) Aggregates results into a Markdown report written to stdout.
+  7) Aggregates results into a Markdown report written to stdout (no tables; per‑agent header, then per‑test sections).
 
 ### Expectations (Regex Subset Matching)
 
@@ -49,7 +53,7 @@ The runner prints a Markdown report to stdout with a compliance table (rows = co
 - Fields omitted in expected messages are ignored.
 - Arrays are matched with “subset contains” semantics: expected array elements must be matched by at least one actual element; order is not enforced unless explicitly specified by repeating expectations.
 - Multiple expected messages can be declared within a time window; extra (unmatched) server messages are ignored by default.
-- Variables: tests can capture values (e.g., `sessionId`) and reuse them via `${var}` interpolation in later `send` frames.
+- Variables: basic `${var}` interpolation is supported for built‑in variables. Captures (extracting values from observed messages) are not currently supported.
 
 ### Agent→Client Requests
 
@@ -58,9 +62,10 @@ The runner prints a Markdown report to stdout with a compliance table (rows = co
 
 ## JSON Template Test Schema
 
-Top-level fields:
+Top-level fields (required unless noted):
 
 - `title` (string): Human-readable title
+- `description` (string): What this test verifies in plain language
 - `severity` (string): `required` | `optional`
 - `docs` (string[]): Links to relevant docs/spec anchors
 - `preconditions` (optional): Array of conditions to gate execution
@@ -70,7 +75,11 @@ Top-level fields:
   - `files` (array): `{ path: string, text?: string, base64?: string }`
 - `init` (optional):
   - `clientCapabilities` (object): override defaults per test
-  - `permissionPolicy` (object): default permissions policy for this test
+  - `permissionPolicy` (string, optional): default permissions policy for this test: one of `none` | `read` | `write` | `yolo`.
+    - `none`: deny all operations
+    - `read`: allow read operations; deny write/execute
+    - `write`: allow read and write operations
+    - `yolo`: allow all operations (default)
 
 Steps array (`steps: []`) – each item is one of:
 
@@ -79,15 +88,17 @@ Steps array (`steps: []`) – each item is one of:
   - `capture` (string): variable to store `sessionId`
 
 - `send` (object): a single JSON-RPC frame to send (client→agent)
-  - `expectError` (boolean, optional): if true, expects a JSON-RPC error response (default: false)
+  - When `id` is present, the runner sends a JSON‑RPC request and awaits a response (or error if `expectError = true`).
+  - When `id` is absent, the runner sends a JSON‑RPC notification (no response awaited).
+  - `expectError` (boolean, optional): if true, expects a JSON‑RPC error response (default: false)
 
 - `expect` (object): wait window for server messages
   - `timeoutMs` (number, default 10000)
   - `messages` (array of expected message envelopes). Each envelope is one of:
     - `response`: Partial JSON-RPC response with regex-valued fields (id/result/error)
     - `notification`: Partial JSON-RPC notification with regex-valued fields (method/params)
-    - `clientRequest`: Partial Agent→Client request with regex-valued fields (method/params); requires `reply`.
-  - `captures` (optional): array of `{ path: string, var: string }` that stores the actual value into `${var}` for later steps.
+    - `clientRequest`: Partial Agent→Client request with regex-valued fields (method/params); optional `reply` can specify a canned client result. If omitted, the configured providers handle the request.
+  - Note: Captures are not currently supported.
 
 - `forbid` (object): declare Agent→Client method names that MUST NOT appear within a window
   - `timeoutMs` (number)
@@ -107,7 +118,7 @@ The runner provides these variables for interpolation in `send` frames and some 
 - `${sandbox}`: Absolute path of the per-test workspace directory.
 - `${protocolVersionDefault}`: Client’s latest supported protocol version.
 - `${clientCapabilitiesDefault}`: Default client capabilities (fs.read=true, fs.write=true, terminal=true unless overridden by `init.clientCapabilities`).
-- `${sessionId}`: When captured via `newSession.capture` or an explicit capture.
+- `${sessionId}`: When created via `newSession.capture`.
 
 ## Sample Report (stdout)
 

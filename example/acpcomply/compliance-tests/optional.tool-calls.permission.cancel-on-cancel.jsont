@@ -1,5 +1,6 @@
 {
   "title": "Cancel outstanding permission on session/cancel",
+  "description": "Client cancels an outstanding permission request using session/cancel; agent returns stopReason=cancelled.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/prompt-turn#cancellation",
@@ -7,6 +8,9 @@
   ],
   "sandbox": {
     "files": []
+  },
+  "init": {
+    "permissionPolicy": "write"
   },
   "steps": [
     {
@@ -41,14 +45,7 @@
               "params": {
                 "sessionId": "^${sessionId}$"
               }
-            },
-            "reply": {
-              "result": {
-                "outcome": {
-                  "outcome": "cancelled"
-                }
-              }
-            }
+          }
           }
         ]
       }
@@ -68,7 +65,7 @@
         "messages": [
           {
             "response": {
-              "id": 21,
+              
               "result": {
                 "stopReason": "^cancelled$"
               }

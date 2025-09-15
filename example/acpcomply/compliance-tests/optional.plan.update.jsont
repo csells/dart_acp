@@ -1,5 +1,6 @@
 {
   "title": "Agent sends plan updates",
+  "description": "Agent emits a plan via session/update while processing a prompt.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/agent-plan"
@@ -53,7 +54,7 @@
         "messages": [
           {
             "response": {
-              "id": 15,
+              
               "result": {
                 "stopReason": ".+"
               }

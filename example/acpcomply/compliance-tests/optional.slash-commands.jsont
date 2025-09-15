@@ -1,5 +1,6 @@
 {
   "title": "Agent advertises available commands",
+  "description": "Agent publishes available slash commands via available_commands_update.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/slash-commands"

@@ -1,5 +1,6 @@
 {
   "title": "Agent must not call terminal/* when capability is false",
+  "description": "With terminal capability disabled, the agent must not invoke any terminal/* client methods.",
   "severity": "required",
   "docs": [
     "https://agentclientprotocol.com/protocol/initialization#client-capabilities",

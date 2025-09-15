@@ -1,5 +1,6 @@
 {
   "title": "Agent releases terminal after use",
+  "description": "Agent releases a managed terminal via terminal/release after it exits.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/terminals#releasing-terminals"
@@ -23,7 +24,7 @@
           "prompt": [
             {
               "type": "text",
-              "text": "Run a command and finish the terminal cleanly."
+              "text": "Run the command 'echo hello' in the terminal."
             }
           ]
         }
@@ -63,7 +64,6 @@
         "messages": [
           {
             "response": {
-              "id": 27,
               "result": {
                 "stopReason": ".+"
               }

@@ -1,5 +1,6 @@
 {
   "title": "Prompt includes embedded resource (resource)",
+  "description": "Agent consumes embedded resource content blocks in prompts when supported (embeddedContext).",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/content#embedded-resource"
@@ -54,7 +55,6 @@
         "messages": [
           {
             "response": {
-              "id": 14,
               "result": {
                 "stopReason": ".+"
               }

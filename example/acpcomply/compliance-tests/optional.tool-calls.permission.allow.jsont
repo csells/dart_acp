@@ -1,10 +1,14 @@
 {
   "title": "Respond to permission request with selected option",
+  "description": "Agent requests permission; client replies with an allow option; agent proceeds.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/tool-calls#requesting-permission",
     "https://agentclientprotocol.com/protocol/schema#requestpermissionrequest"
   ],
+  "init": {
+    "permissionPolicy": "write"
+  },
   "sandbox": {
     "files": []
   },
@@ -41,15 +45,7 @@
               "params": {
                 "sessionId": "^${sessionId}$"
               }
-            },
-            "reply": {
-              "result": {
-                "outcome": {
-                  "outcome": "selected",
-                  "optionId": "allow-once"
-                }
-              }
-            }
+          }
           }
         ]
       }
@@ -60,7 +56,7 @@
         "messages": [
           {
             "response": {
-              "id": 20,
+              
               "result": {
                 "stopReason": ".+"
               }

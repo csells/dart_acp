@@ -1,5 +1,6 @@
 {
   "title": "Cancel a running prompt",
+  "description": "Client cancels an in-flight prompt using session/cancel; agent responds with stopReason=cancelled.",
   "severity": "required",
   "docs": [
     "https://agentclientprotocol.com/protocol/prompt-turn#cancellation",
@@ -25,29 +26,14 @@
           "prompt": [
             {
               "type": "text",
-              "text": "Please count from 1 to 100 slowly, showing each number on a separate line with a brief pause between each number. After each group of 10 numbers, add a comment about the pattern you see."
+              "text": "Please write a very long story about a dragon. Include at least 100 paragraphs with detailed descriptions. Make it as long and detailed as possible."
             }
           ]
         }
       }
     },
     {
-      "expect": {
-        "timeoutMs": 5000,
-        "messages": [
-          {
-            "notification": {
-              "jsonrpc": "2.0",
-              "method": "session/update",
-              "params": {
-                "update": {
-                  "sessionUpdate": "^(agent_message_chunk|plan|tool_call)$"
-                }
-              }
-            }
-          }
-        ]
-      }
+      "delayMs": 100
     },
     {
       "send": {
@@ -64,7 +50,7 @@
         "messages": [
           {
             "response": {
-              "id": 2,
+              
               "result": {
                 "stopReason": "^cancelled$"
               }

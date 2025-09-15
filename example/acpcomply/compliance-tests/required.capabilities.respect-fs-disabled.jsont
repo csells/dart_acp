@@ -1,5 +1,6 @@
 {
   "title": "Agent must not call fs/* when capability is false",
+  "description": "With fs.readTextFile/writeTextFile disabled, the agent must not invoke any fs/* client methods.",
   "severity": "required",
   "docs": [
     "https://agentclientprotocol.com/protocol/initialization#client-capabilities"

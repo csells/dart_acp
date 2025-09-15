@@ -1,5 +1,6 @@
 {
   "title": "Prompt includes an image content block",
+  "description": "Agent accepts image content blocks in prompts when promptCapabilities.image is true.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/content#image-content"
@@ -46,7 +47,6 @@
         "messages": [
           {
             "response": {
-              "id": 29,
               "result": {
                 "stopReason": ".+"
               }

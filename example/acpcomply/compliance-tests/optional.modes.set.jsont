@@ -1,5 +1,6 @@
 {
   "title": "Set session mode and observe current_mode_update",
+  "description": "Client switches the session mode via session/set_mode and the agent emits a current_mode_update notification.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/session-modes",
@@ -31,7 +32,7 @@
         "messages": [
           {
             "response": {
-              "id": 16,
+              
               "result": {}
             }
           }

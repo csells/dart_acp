@@ -100,9 +100,13 @@ Future<void> main(List<String> argv) async {
             'params': {
               'toolName': opts.toolName,
               if (opts.toolKind != null) 'toolKind': opts.toolKind,
-              'decision': decision == PermissionOutcome.allow ? 'allow' : 'deny',
+              'decision': decision == PermissionOutcome.allow
+                  ? 'allow'
+                  : 'deny',
               if (decision == PermissionOutcome.deny && isWriteOp)
-                'hint': 'Use --write or --yolo to enable writes (still confined to workspace)'
+                'hint':
+                    'Use --write or --yolo to enable writes '
+                    '(still confined to workspace)',
             },
           };
           stdout.writeln(jsonEncode(payload));
@@ -114,7 +118,8 @@ Future<void> main(List<String> argv) async {
           );
           if (decision == PermissionOutcome.deny && isWriteOp) {
             stdout.writeln(
-              '[permission] Use --write or --yolo to enable writes (confined to workspace)',
+              '[permission] Use --write or --yolo to enable writes '
+              '(confined to workspace)',
             );
           }
         }

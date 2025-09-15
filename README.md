@@ -350,7 +350,7 @@ dart example/acpcli/acpcli.dart "Run: npm test"
 The compliance runner executes a suite of ACP agent compliance tests and prints a Markdown report to stdout.
 
 - Entrypoint: `example/acpcomply/acpcomply.dart`
-- Tests: `example/acpcomply/compliance-tests/*.json`
+- Tests: `example/acpcomply/compliance-tests/*.jsont`
 - Requirements/spec: `specs/acpcomply-requirements.md`
 
 ### What It Verifies
@@ -369,7 +369,7 @@ The compliance runner executes a suite of ACP agent compliance tests and prints 
 - Reuses `AcpClient` for transport and Agent→Client handling
 - Matches server responses/notifications via regex subset matching
 - Observes Agent→Client requests (`fs/*`, `terminal/*`, `session/request_permission`)
-- Prints a Markdown table of PASS/FAIL/NA per agent and test
+- Prints an agent-first Markdown report (no summary table): header per agent, then one H2 per test with actionable status and diffs
 
 ### Run
 ```bash

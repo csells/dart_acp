@@ -1,5 +1,6 @@
 {
   "title": "Prompt includes an audio content block",
+  "description": "Agent accepts audio content blocks in prompts when promptCapabilities.audio is true.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/content#audio-content"
@@ -46,7 +47,7 @@
         "messages": [
           {
             "response": {
-              "id": 30,
+              
               "result": {
                 "stopReason": ".+"
               }

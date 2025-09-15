@@ -1,5 +1,6 @@
 {
   "title": "Observe agent and user/thought chunks",
+  "description": "Agent streams message chunks (agent, user, thought) via session/update during the prompt.",
   "severity": "optional",
   "docs": [
     "https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output"
@@ -53,7 +54,6 @@
         "messages": [
           {
             "response": {
-              "id": 22,
               "result": {
                 "stopReason": ".+"
               }

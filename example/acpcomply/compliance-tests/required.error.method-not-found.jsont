@@ -1,5 +1,6 @@
 {
   "title": "Unknown method → -32601",
+  "description": "Calling an unknown method must return JSON-RPC error code -32601 (Method Not Found).",
   "severity": "required",
   "docs": [
     "https://www.jsonrpc.org/specification#error_object"

@@ -1,5 +1,6 @@
 {
   "title": "Agent must use absolute paths in fs requests",
+  "description": "All fs/* requests from the agent must use absolute file paths, not relative paths.",
   "severity": "required",
   "docs": [
     "https://agentclientprotocol.com/protocol/overview#argument-requirements"
