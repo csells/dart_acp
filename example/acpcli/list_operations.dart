@@ -85,6 +85,7 @@ class ListOperationsHandler {
 
     // Create session if needed for modes/commands
     if (needsSession && sessionId == null) {
+      // ignore: parameter_assignments
       sessionId = await client.newSession(Directory.current.path);
 
       // Wait briefly for available_commands_update

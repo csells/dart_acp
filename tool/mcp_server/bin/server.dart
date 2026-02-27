@@ -11,7 +11,7 @@ Future<void> main(List<String> args) async {
   // advertised).
   final server = McpServer(
     const Implementation(name: 'dart-acp-mcp', version: '0.1.0'),
-    options: const ServerOptions(
+    options: const McpServerOptions(
       capabilities: ServerCapabilities(
         tools: ServerCapabilitiesTools(),
         resources: ServerCapabilitiesResources(),
@@ -20,41 +20,36 @@ Future<void> main(List<String> args) async {
   );
 
   // Register a simple ping tool
-  server.tool(
+  server.registerTool(
     'ping',
     description: 'Returns pong',
-    callback: ({args, extra}) async =>
-        CallToolResult.fromContent(content: const [TextContent(text: 'pong')]),
+    callback: (args, extra) async =>
+        const CallToolResult(content: [TextContent(text: 'pong')]),
   );
 
   // Register a read_file tool: { path: string }
-  server.tool(
+  server.registerTool(
     'read-file',
     description: 'Read a text file and return content',
-    toolInputSchema: const ToolInputSchema(
+    inputSchema: const ToolInputSchema(
       properties: {
-        'path': {
-          'type': 'string',
-          'description': 'Absolute path to the file to read',
-        },
+        'path': JsonString(description: 'Absolute path to the file to read'),
       },
       required: ['path'],
     ),
-    callback: ({args, extra}) async {
-      final path = args?['path'];
+    callback: (args, extra) async {
+      final path = args['path'];
       if (path is! String || path.trim().isEmpty) {
-        return CallToolResult.fromContent(
-          content: const [TextContent(text: 'Invalid path')],
+        return const CallToolResult(
+          content: [TextContent(text: 'Invalid path')],
           isError: true,
         );
       }
       try {
         final content = await File(path).readAsString();
-        return CallToolResult.fromContent(
-          content: [TextContent(text: content)],
-        );
+        return CallToolResult(content: [TextContent(text: content)]);
       } on Exception catch (e) {
-        return CallToolResult.fromContent(
+        return CallToolResult(
           content: [TextContent(text: 'Error: $e')],
           isError: true,
         );
@@ -63,29 +58,26 @@ Future<void> main(List<String> args) async {
   );
 
   // Register a list-files tool: { path: string }
-  server.tool(
+  server.registerTool(
     'list-files',
     description: 'List files in a directory (non-recursive)',
-    toolInputSchema: const ToolInputSchema(
+    inputSchema: const ToolInputSchema(
       properties: {
-        'path': {
-          'type': 'string',
-          'description': 'Absolute path to a directory to list',
-        },
+        'path': JsonString(description: 'Absolute path to a directory to list'),
       },
       required: ['path'],
     ),
-    callback: ({args, extra}) async {
-      final path = args?['path'];
+    callback: (args, extra) async {
+      final path = args['path'];
       if (path is! String || path.trim().isEmpty) {
-        return CallToolResult.fromContent(
-          content: const [TextContent(text: 'Invalid path')],
+        return const CallToolResult(
+          content: [TextContent(text: 'Invalid path')],
           isError: true,
         );
       }
       final dir = Directory(path);
       if (!dir.existsSync()) {
-        return CallToolResult.fromContent(
+        return CallToolResult(
           content: [TextContent(text: 'Directory does not exist: $path')],
           isError: true,
         );
@@ -102,11 +94,9 @@ Future<void> main(List<String> args) async {
                 : (type == FileSystemEntityType.file ? 'file' : 'other'),
           });
         }
-        return CallToolResult.fromStructuredContent(
-          structuredContent: {'files': files},
-        );
+        return CallToolResult.fromStructuredContent({'files': files});
       } on Exception catch (e) {
-        return CallToolResult.fromContent(
+        return CallToolResult(
           content: [TextContent(text: 'Error: $e')],
           isError: true,
         );
